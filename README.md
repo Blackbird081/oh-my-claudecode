@@ -105,9 +105,19 @@ For mixed Codex + Gemini work in one command, use the **`/ccg`** skill (routes v
 
 Workers spawn on-demand and die when their task completes — no idle resource usage. Requires `codex` / `gemini` CLIs installed and an active tmux session.
 
-> **Note: Package naming** — The project is branded as **oh-my-claudecode** (repo, plugin, commands), but the npm package is published as [`oh-my-claude-sisyphus`](https://www.npmjs.com/package/oh-my-claude-sisyphus). If you install the CLI tools via npm/bun, use `npm install -g oh-my-claude-sisyphus`.
+> **Note: Package naming** — The project is branded as **oh-my-claudecode** (repo, plugin, commands), but the npm package is published as [`oh-my-claude-sisyphus`](https://www.npmjs.com/package/oh-my-claude-sisyphus). If you install or upgrade the CLI tools via npm/bun, use `npm i -g oh-my-claude-sisyphus@latest`.
 
 ### Updating
+
+If you installed OMC via npm, upgrade with the published package name:
+
+```bash
+npm i -g oh-my-claude-sisyphus@latest
+```
+
+> **Package naming note:** the repo, plugin, and commands are branded **oh-my-claudecode**, but the published npm package name remains `oh-my-claude-sisyphus`.
+
+If you installed OMC via the Claude Code marketplace/plugin flow, update with:
 
 ```bash
 # 1. Update the marketplace clone
