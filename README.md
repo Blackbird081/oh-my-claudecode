@@ -186,7 +186,7 @@ Multiple strategies for different use cases — from Team-backed orchestration t
 
 ### Intelligent Orchestration
 
-- **32 specialized agents** for architecture, research, design, testing, data science
+- **19 specialized agents** (with tier variants) for architecture, research, design, testing, data science
 - **Smart model routing** - Haiku for simple tasks, Opus for complex reasoning
 - **Automatic delegation** - Right agent for the job, every time
 
@@ -387,6 +387,7 @@ See `scripts/openclaw-gateway-demo.mjs` for a reference gateway that relays Open
 - **[Migration Guide](docs/MIGRATION.md)** - Upgrade from v2.x
 - **[Architecture](docs/ARCHITECTURE.md)** - How it works under the hood
 - **[Performance Monitoring](docs/PERFORMANCE-MONITORING.md)** - Agent tracking, debugging, and optimization
+- **[Security Guide](SECURITY.md)** - Enterprise deployment and hardening
 
 ---
 
