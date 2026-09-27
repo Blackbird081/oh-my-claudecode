@@ -17,6 +17,7 @@ import { Command } from 'commander';
 import { spawnSync } from 'child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join, resolve } from 'path';
+import { getOmcRoot } from '../../lib/worktree-paths.js';
 
 const HARBOR_LABELS = [
   'harbor:accepted',
@@ -98,7 +99,7 @@ export function checkOrCreateHarborLabels(cwd: string, runner: IntakeRunner): Pr
  * the intake forever).
  */
 export function acquireIntakeLock(cwd: string, now = Date.now()): PreconditionCheck {
-  const lockPath = join(resolve(cwd), '.omc', 'state', 'intake-lock.json');
+  const lockPath = join(getOmcRoot(cwd), 'state', 'intake-lock.json');
   try {
     if (existsSync(lockPath)) {
       let started = 0;
@@ -121,7 +122,7 @@ export function acquireIntakeLock(cwd: string, now = Date.now()): PreconditionCh
 
 export function releaseIntakeLock(cwd: string): void {
   try {
-    const lockPath = join(resolve(cwd), '.omc', 'state', 'intake-lock.json');
+    const lockPath = join(getOmcRoot(cwd), 'state', 'intake-lock.json');
     if (existsSync(lockPath)) writeFileSync(lockPath, '', 'utf8');
   } catch {
     // best-effort release
