@@ -33,6 +33,7 @@ import { paneLineLooksLikeIdlePrompt } from './pane-readiness.js';
 import {
   awaitWorkerLaunchAcknowledgement,
   awaitWorkerLaunchProviderStarted,
+  buildProviderEnvironment,
   cleanupWorkerLaunchTransport,
   isWorkerLaunchAttemptAccepted,
   isWorkerLaunchAttemptCurrent,
@@ -1379,7 +1380,24 @@ function workerPaneShellCommand(): string[] {
   if (process.platform === 'win32' && !isUnixLikeOnWindows()) {
     return [getDefaultShell()];
   }
-  return [];
+  if (process.platform === 'win32') return [];
+
+  // tmux can retain the full environment from when its server was started.
+  // Start pane shells from the worker-launch baseline while preserving the
+  // terminal and pane identity needed by interactive and nested team commands.
+  const shell = getDefaultShell();
+  const baseline = buildProviderEnvironment({ SHELL: shell });
+  const inheritedPaneEnvironment = ['TERM', 'TMUX', 'TMUX_PANE', 'TMUX_TMPDIR', 'LANG', 'LC_ALL', 'LC_CTYPE']
+    .map(key => `${key}="$${key}"`);
+  const command = [
+    '/usr/bin/env',
+    '-i',
+    ...Object.entries(baseline).map(([key, value]) => `${key}=${shellQuote(value)}`),
+    ...inheritedPaneEnvironment,
+    shellQuote(shell),
+    '-l',
+  ].join(' ');
+  return [command];
 }
 
 function escapeForCmdSet(value: string): string {
@@ -2223,6 +2241,7 @@ export async function createTeamSession(
       '-t', `=${targetSession}`,
       '-n', windowName,
       '-c', cwd,
+      ...workerPaneShellCommand(),
     ];
     let newWindowResult: Awaited<ReturnType<typeof runGuardedNativeTmuxCommand>>;
     try {
