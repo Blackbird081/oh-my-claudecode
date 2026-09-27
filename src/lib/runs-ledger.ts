@@ -12,7 +12,7 @@
  * write or clear it observes.
  */
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
 /** The unattended modes whose lifecycle edges are recorded. */
@@ -76,9 +76,10 @@ function rotateIfNeeded(path: string): void {
     if (!stat.isFile()) return;
     const lines = readFileSync(path, 'utf8').split('\n').filter((line) => line.trim().length > 0);
     if (lines.length < LEDGER_TAIL_LINES) return;
-    const tail = lines.slice(-LEDGER_TAIL_LINES);
-    renameSync(path, `${path}.1`);
-    writeFileSync(path, `${tail.join('\n')}\n`, 'utf8');
+    // Append all lines to .1 for archival, then clear main for fresh appends.
+    // This keeps the total ledger bounded: .1 has rotated batches, main has recent entries.
+    appendFileSync(`${path}.1`, `${lines.join('\n')}\n`, 'utf8');
+    writeFileSync(path, '', 'utf8');
   } catch {
     // rotation is best-effort; appends tolerate a missing or locked file
   }
