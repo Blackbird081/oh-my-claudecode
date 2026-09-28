@@ -36,7 +36,8 @@ export interface SpawnNextPlan {
 export type SpawnFn = (command: string, args: string[]) => { unref(): void };
 
 const REPO_PATTERN = /^[\w.-]+\/[\w.-]+$/;
-const LABEL_PATTERN = /^[\w.-]+$/;
+/** Shared label charset (stage/skill/labels): safe for paths and argv. */
+export const LABEL_PATTERN = /^[\w.-]+$/;
 
 /**
  * The chain rides a detached manifest job: every field that lands in a
@@ -91,12 +92,13 @@ export function executeSpawnNext(chain: SpawnNextChain, directory: string, spawn
     next: plan.directive,
     context: chain.handoffContext ?? '',
   }, null, 2), 'utf8');
+  const factoryDir = path.join(omcRoot, 'state', 'factory');
+  const ledgerPath = path.join(factoryDir, `chain-${plan.nextSessionId}.json`);
   try {
     // The next link's ledger must exist before it ends its session, so the
     // SessionEnd enqueuer finds it; written under the same failure alerts.
-    const factoryDir = path.join(omcRoot, 'state', 'factory');
     fs.mkdirSync(factoryDir, { recursive: true });
-    fs.writeFileSync(path.join(factoryDir, `chain-${plan.nextSessionId}.json`), JSON.stringify({
+    fs.writeFileSync(ledgerPath, JSON.stringify({
       intentId: chain.intentId ?? `chain-${chain.sessionId}`,
       stage: plan.directive.stage,
       routeTable: chain.routeTable,
@@ -104,6 +106,8 @@ export function executeSpawnNext(chain: SpawnNextChain, directory: string, spawn
     }, null, 2), 'utf8');
     spawnFn(plan.spawnArgv[0], plan.spawnArgv.slice(1));
   } catch (error) {
+    // Don't leave a dead ledger pointing at a session that never started.
+    try { fs.unlinkSync(ledgerPath); } catch { /* never written */ }
     if (chain.tracker) {
       spawnFn('gh', ['issue', 'comment', String(chain.tracker.issue), '--repo', chain.tracker.repo, '--body', spawnNextAlertComment(chain)]);
       spawnFn('gh', ['issue', 'edit', String(chain.tracker.issue), '--repo', chain.tracker.repo, '--add-label', chain.tracker.failedLabel]);

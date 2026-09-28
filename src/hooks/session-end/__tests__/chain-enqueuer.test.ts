@@ -177,4 +177,29 @@ describe('planChainEnqueue', () => {
     expect(planChainEnqueue(dir, 'sess-a', 'prompt_input_exit')).toBeNull();
     expect(readDecisions(dir).at(-1)).toMatchObject({ decision: 'invalid-ledger' });
   });
+
+  it('rejects a ledger whose intentId carries path metacharacters', () => {
+    const dir = tempDir();
+    writeLedger(dir, 'sess-a', { intentId: '../../evil' });
+    writeProjectRoutes(dir, { 'success:*': { stage: 'spec', skill: 'spec' } });
+    expect(planChainEnqueue(dir, 'sess-a', 'other')).toBeNull();
+    expect(readDecisions(dir).at(-1)).toMatchObject({ decision: 'invalid-ledger' });
+    // No stop marker may escape the factory dir (or be written at all).
+    expect(existsSync(join(factoryStateDir(dir), 'chain-....stopped.json'))).toBe(false);
+    expect(existsSync(join(dir, 'evil.stopped.json'))).toBe(false);
+  });
+
+  it('rejects a ledger route whose stage or skill carries path metacharacters', () => {
+    const dir = tempDir();
+    writeLedger(dir, 'sess-a', { intentId: 'intent-a', routeTable: { 'success:*': { stage: '../evil', skill: 'spec' } } });
+    expect(planChainEnqueue(dir, 'sess-a', 'prompt_input_exit')).toBeNull();
+    expect(readDecisions(dir).at(-1)).toMatchObject({ decision: 'invalid-ledger' });
+
+    const failedDir = tempDir();
+    writeLedger(failedDir, 'sess-a', { intentId: 'intent-a', routeTable: { 'failed:*': { stage: 'spec', skill: 'x".y' } } });
+    expect(planChainEnqueue(failedDir, 'sess-a', 'other')).toBeNull();
+    expect(readDecisions(failedDir).at(-1)).toMatchObject({ decision: 'invalid-ledger' });
+    // failed outcome leaves a halt marker inside the factory dir only.
+    expect(readChainStopMarker('intent-a', factoryStateDir(failedDir))).toMatchObject({ reason: 'invalid-ledger:other' });
+  });
 });

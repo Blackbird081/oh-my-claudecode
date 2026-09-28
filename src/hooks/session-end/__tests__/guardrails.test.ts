@@ -40,6 +40,13 @@ describe('chainDayKey', () => {
 });
 
 describe('acquireChainSlot — serial single-session', () => {
+  it('rejects an intentId with path metacharacters before any lock is taken', () => {
+    const root = tempStateRoot();
+    const result = acquireChainSlot('../../evil', root);
+    expect(result.allowed).toBe(false);
+    expect(result).toMatchObject({ reason: 'invalid-intent-id' });
+  });
+
   it('rejects the second concurrent link while the first is active', () => {
     const root = tempStateRoot();
     const first = acquireChainSlot('intent-a', root);

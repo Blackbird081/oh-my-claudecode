@@ -48,7 +48,18 @@ export async function executeSessionEndAction(name: SessionEndActionName, payloa
     const chain = current?.actions['spawn-next']?.payload?.chain as Parameters<typeof import('./spawn-next.js').executeSpawnNext>[0] | undefined;
     if (!chain || typeof chain !== 'object') return;
     const { executeSpawnNext } = await import('./spawn-next.js');
-    executeSpawnNext(chain, payload.directory);
+    try {
+      executeSpawnNext(chain, payload.directory);
+    } catch (error) {
+      const { recordChainDecision } = await import('./chain-enqueuer.js');
+      recordChainDecision(payload.directory, {
+        decision: 'enqueued-failed',
+        sessionId: payload.sessionId,
+        intentId: (chain as { intentId?: string }).intentId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
     return;
   }
   return legacy.runSessionEndOpenClaw(payload.directory, payload.sessionId, true);

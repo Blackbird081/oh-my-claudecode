@@ -136,12 +136,17 @@ export function processEvent(event: TrackerEvent, config: ListenerConfig, deps: 
   try {
     // Pre-write the first chain ledger so the spawned session's SessionEnd
     // finds it (route table falls back to the project's factory-routes.json).
-    const factoryDir = join(getOmcRoot(config.cwd), 'state', 'factory');
-    mkdirSync(factoryDir, { recursive: true });
-    writeFileSync(join(factoryDir, `chain-${nextSessionId}.json`), JSON.stringify({
-      intentId,
-      stage: outcome.directive.stage,
-    }, null, 2), 'utf8');
+    // Best-effort: a ledger write failure must not block spawning the link.
+    try {
+      const factoryDir = join(getOmcRoot(config.cwd), 'state', 'factory');
+      mkdirSync(factoryDir, { recursive: true });
+      writeFileSync(join(factoryDir, `chain-${nextSessionId}.json`), JSON.stringify({
+        intentId,
+        stage: outcome.directive.stage,
+      }, null, 2), 'utf8');
+    } catch (error) {
+      audit({ kind: 'discarded', reason: 'ledger write failed', detail: error instanceof Error ? error.message : String(error), session: nextSessionId });
+    }
     if (deps.spawner) deps.spawner('claude', args);
     else defaultSpawnFn('claude', args);
   } finally {

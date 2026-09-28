@@ -23,6 +23,12 @@ import { getOmcRoot } from "../../lib/worktree-paths.js";
 /** Chain-level cap: links per intent per local calendar day (mission brief #8). */
 export const DAILY_CHAIN_LIMIT = 10;
 
+/**
+ * intentIds land in lock/stop-marker file names, so the charset is a security
+ * boundary: word chars, dot, hyphen only — no separators, no traversal.
+ */
+export const INTENT_ID_PATTERN = /^[\w.-]{1,256}$/;
+
 /** Long-lived serial lock: a live owner is never stale (isLockStale requires a dead pid). */
 const SERIAL_STALE_MS = 24 * 60 * 60 * 1000;
 
@@ -35,7 +41,7 @@ export interface ChainSlotPermit {
 
 export type ChainSlotRejection = {
   allowed: false;
-  reason: "serial-conflict" | "daily-cap";
+  reason: "serial-conflict" | "daily-cap" | "invalid-intent-id";
   detail: string;
 };
 
@@ -102,6 +108,13 @@ export function acquireChainSlot(
   now: Date = new Date(),
 ): ChainSlotResult {
   const dir = factoryStateDir(stateRoot);
+  if (!INTENT_ID_PATTERN.test(intentId)) {
+    return {
+      allowed: false,
+      reason: "invalid-intent-id",
+      detail: `非法 intentId（仅限字母数字点连线下划线，≤256 字符）：${intentId}`,
+    };
+  }
   mkdirSync(dir, { recursive: true });
   const serialLock = acquireFileLockSync(join(dir, `chain-${intentId}.active.lock`), {
     staleLockMs: SERIAL_STALE_MS,

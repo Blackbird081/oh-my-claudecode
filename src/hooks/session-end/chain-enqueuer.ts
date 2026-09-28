@@ -13,8 +13,8 @@
 import * as fs from 'fs';
 import { join } from 'path';
 import { decideNextStage, gradeGate, type ChainOutcome, type GateFacts, type GateName, type RouteTable } from './routing.js';
-import { acquireChainSlot, releaseChainSlot } from './guardrails.js';
-import { validateChainFields, type SpawnNextChain, type SpawnNextTracker } from './spawn-next.js';
+import { acquireChainSlot, releaseChainSlot, INTENT_ID_PATTERN } from './guardrails.js';
+import { validateChainFields, LABEL_PATTERN, type SpawnNextChain, type SpawnNextTracker } from './spawn-next.js';
 import { getOmcRoot, validateSessionId } from '../../lib/worktree-paths.js';
 
 export interface ChainLedger {
@@ -65,6 +65,11 @@ export function readProjectRoutes(directory: string): RouteTable | null {
 }
 
 function recordDecision(directory: string, record: Record<string, unknown>): void {
+  recordChainDecision(directory, record);
+}
+
+/** Decision audit trail; also used by the worker to correct the record when a spawn fails. */
+export function recordChainDecision(directory: string, record: Record<string, unknown>): void {
   try {
     fs.mkdirSync(factoryStateDir(directory), { recursive: true });
     fs.appendFileSync(
@@ -110,14 +115,26 @@ export function planChainEnqueue(directory: string, sessionId: string, reason: s
 
     const outcome = sessionEndOutcome(reason);
     const intentId = typeof ledger.intentId === 'string' && ledger.intentId ? ledger.intentId : `chain-${sessionId}`;
-    const routeTable = ledger.routeTable ?? readProjectRoutes(directory) ?? {};
     const record = (decision: string, extra: Record<string, unknown> = {}) =>
       recordDecision(directory, { decision, sessionId, outcome, reason, intentId, ...extra });
+
+    // Ledger fields land in file names and spawned argv — validate before any
+    // halt marker, lock, or handoff path is built from them.
+    if (!INTENT_ID_PATTERN.test(intentId)) {
+      record('invalid-ledger', { error: `invalid intentId: ${intentId}` });
+      return null;
+    }
+    const routeTable = ledger.routeTable ?? readProjectRoutes(directory) ?? {};
 
     const directive = decideNextStage(outcome, reason, routeTable);
     if (!directive) {
       record('no-route');
       if (outcome === 'failed') writeHaltMarker(directory, intentId, `session-end:${reason}`);
+      return null;
+    }
+    if (!LABEL_PATTERN.test(directive.stage) || !LABEL_PATTERN.test(directive.skill)) {
+      record('invalid-ledger', { error: `invalid stage/skill: ${directive.stage}/${directive.skill}` });
+      if (outcome === 'failed') writeHaltMarker(directory, intentId, `invalid-ledger:${reason}`);
       return null;
     }
 
