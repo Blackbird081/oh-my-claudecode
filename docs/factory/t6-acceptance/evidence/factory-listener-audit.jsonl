@@ -1,6 +1,0 @@
-{"kind":"rejected","status":403,"reason":"repository outside whitelist: pangpang778/other-repo","at":"2026-09-28T07:51:44.977Z"}
-{"kind":"routed","stage":"intent","skill":"intent","issue":"https://github.com/pangpang778/factory-demo/issues/1","at":"2026-09-28T07:53:31.147Z"}
-{"kind":"routed","stage":"intent","skill":"intent","issue":"https://github.com/pangpang778/factory-demo/issues/1","at":"2026-09-28T08:04:16.637Z"}
-{"kind":"routed","stage":"intent","skill":"intent","issue":"https://github.com/pangpang778/factory-demo/issues/1","at":"2026-09-28T08:16:31.369Z"}
-{"kind":"routed","stage":"intent","skill":"intent","issue":"https://github.com/pangpang778/factory-demo/issues/1","at":"2026-09-28T08:23:53.072Z"}
-{"kind":"routed","stage":"intent","skill":"intent","issue":"https://github.com/pangpang778/factory-demo/issues/1","at":"2026-09-28T08:28:09.681Z"}
