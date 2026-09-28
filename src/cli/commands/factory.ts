@@ -24,9 +24,10 @@ export function factoryCommand(): Command {
     .command('listen')
     .description('Run the intake listener daemon: HMAC-verified webhook events -> intake label gate -> headless intent sessions')
     .option('--port <n>', 'port to listen on (transport adapters forward here)', '7788')
+    .option('--host <addr>', 'host to bind to (default: 127.0.0.1 for localhost only; set to 0.0.0.0 only when transport adapter runs on another machine)', '127.0.0.1')
     .requiredOption('--repo <names>', 'repository whitelist, comma-separated owner/name')
     .option('--cwd <dir>', 'repository whose .omc state root the daemon writes to', process.cwd())
-    .action((options: { port: string; repo: string; cwd: string }) => {
+    .action((options: { port: string; host: string; repo: string; cwd: string }) => {
       const secret = process.env.OMC_FACTORY_HMAC_SECRET;
       if (!secret) {
         console.error(chalk.red('refused: no HMAC secret. Set OMC_FACTORY_HMAC_SECRET.'));
@@ -40,11 +41,12 @@ export function factoryCommand(): Command {
         return;
       }
       const cwd = resolve(options.cwd);
-      void startListener({ port: Number(options.port), secret, whitelist, cwd }).then((server) => {
+      void startListener({ port: Number(options.port), secret, whitelist, cwd, host: options.host }).then((server) => {
         const addr = server.address();
         const port = addr && typeof addr !== 'string' ? addr.port : options.port;
-        console.log(chalk.green(`factory listener on :${port} — whitelist: ${whitelist.join(', ')}`));
-        console.log(chalk.gray('liveness: GET /status on the port above, or the pid file in .omc/state/factory-listener.json'));
+        const host = addr && typeof addr !== 'string' ? addr.address : options.host;
+        console.log(chalk.green(`factory listener on ${host}:${port} — whitelist: ${whitelist.join(', ')}`));
+        console.log(chalk.gray(`liveness: GET http://${host === '::' ? '[::1]' : host}:${port}/status or check .omc/state/factory-listener.json`));
         const stop = () => {
           stopListener(server, cwd);
           process.exit(0);

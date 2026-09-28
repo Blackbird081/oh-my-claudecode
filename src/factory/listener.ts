@@ -79,6 +79,7 @@ export interface ListenerConfig {
   secret: string;
   whitelist: ReadonlyArray<string>;
   cwd: string;
+  host?: string; // defaults to 127.0.0.1 for localhost-only binding
 }
 
 export interface ListenerDeps {
@@ -147,7 +148,11 @@ function pidFilePath(cwd: string): string {
 }
 
 export function startListener(config: ListenerConfig, deps: ListenerDeps = {}): Promise<Server> {
+  if (!config.secret?.trim()) {
+    throw new Error('HMAC secret is required and cannot be empty');
+  }
   const startedAt = new Date().toISOString();
+  const host = config.host || '127.0.0.1';
   let tail: Promise<void> = Promise.resolve();
   const server = createServer((req, res) => {
     // Serial v1: each request is fully handled (body drained -> verify ->
@@ -159,9 +164,12 @@ export function startListener(config: ListenerConfig, deps: ListenerDeps = {}): 
       });
   });
   return new Promise((resolve) => {
-    server.listen(config.port, () => {
+    server.listen(config.port, host, () => {
       mkdirSync(join(pidFilePath(config.cwd), '..'), { recursive: true });
-      writeFileSync(pidFilePath(config.cwd), JSON.stringify({ pid: process.pid, port: config.port, startedAt }, null, 2));
+      const addr = server.address();
+      const portForLog = addr && typeof addr !== 'string' ? addr.port : config.port;
+      const hostForLog = addr && typeof addr !== 'string' ? addr.address : host;
+      writeFileSync(pidFilePath(config.cwd), JSON.stringify({ pid: process.pid, port: portForLog, host: hostForLog, startedAt }, null, 2));
       resolve(server);
     });
   });
