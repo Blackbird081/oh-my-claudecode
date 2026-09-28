@@ -187,6 +187,41 @@ describe('processEvent', () => {
 });
 
 describe('listener server', () => {
+  it('throws when the secret is empty or missing', () => {
+    const cfg = config({ secret: '' });
+    expect(() => { const _p = startListener(cfg); }).toThrow('HMAC secret is required and cannot be empty');
+    const cfg2 = config({ secret: '   ' });
+    expect(() => { const _p = startListener(cfg2); }).toThrow('HMAC secret is required and cannot be empty');
+  });
+
+  it('binds to 127.0.0.1 by default for localhost-only access', async () => {
+    const cfg = config({ port: 0 });
+    const server = await startListener(cfg);
+    try {
+      const addr = server.address();
+      expect(addr).not.toBeNull();
+      if (addr && typeof addr !== 'string') {
+        expect(addr.address).toBe('127.0.0.1');
+      }
+    } finally {
+      stopListener(server, cfg.cwd);
+    }
+  });
+
+  it('binds to a custom host when specified', async () => {
+    const cfg = config({ port: 0, host: '127.0.0.1' });
+    const server = await startListener(cfg);
+    try {
+      const addr = server.address();
+      expect(addr).not.toBeNull();
+      if (addr && typeof addr !== 'string') {
+        expect(addr.address).toBe('127.0.0.1');
+      }
+    } finally {
+      stopListener(server, cfg.cwd);
+    }
+  });
+
   it('rejects bad HMAC with 401 and never routes', async () => {
     const spawned: Array<[string, string[]]> = [];
     const cfg = config({ port: 0 });
@@ -194,7 +229,7 @@ describe('listener server', () => {
     try {
       const addr = server.address();
       if (!addr || typeof addr === 'string') throw new Error('no port');
-      const res = await fetch(`http://127.0.0.1:${addr.port}`, {
+      const res = await fetch(`http://${addr.address}:${addr.port}`, {
         method: 'POST',
         headers: { 'x-hub-signature-256': 'sha256=deadbeef' },
         body: JSON.stringify(event()),
@@ -213,7 +248,7 @@ describe('listener server', () => {
     try {
       const addr = server.address();
       if (!addr || typeof addr === 'string') throw new Error('no port');
-      const res = await fetch(`http://127.0.0.1:${addr.port}`, {
+      const res = await fetch(`http://${addr.address}:${addr.port}`, {
         method: 'POST',
         body: 'x'.repeat(MAX_BODY_BYTES + 1),
       });
@@ -231,7 +266,7 @@ describe('listener server', () => {
     try {
       const addr = server.address();
       if (!addr || typeof addr === 'string') throw new Error('no port');
-      const base = `http://127.0.0.1:${addr.port}`;
+      const base = `http://${addr.address}:${addr.port}`;
 
       const status = await fetch(`${base}/status`);
       expect(status.status).toBe(200);
