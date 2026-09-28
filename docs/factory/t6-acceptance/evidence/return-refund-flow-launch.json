@@ -1,0 +1,12 @@
+{
+  "sessionId": "return-refund-flow",
+  "from": {
+    "outcome": "success",
+    "reason": "intent-accepted"
+  },
+  "next": {
+    "stage": "launch",
+    "skill": "launch"
+  },
+  "context": "docs/intents/return-refund-flow/intent.md（intent 已通过 intent-accept 人闸，接受记录见 issue #1 评论 5866386028；未决 3 条带入 launch 逐条消化）"
+}

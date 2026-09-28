@@ -1,0 +1,13 @@
+[2B] spawnFn calls:
+  - claude -p /launch 继续 launch 环；交接上下文：t6ex2b-launch.json
+  - gh issue comment 1 --repo pangpang778/factory-demo --body 链已停住：会话结束状态 success:intent-accepted 触发下一环启动失败，需人工修复（v1 无自动重试）。
+  - gh issue edit 1 --repo pangpang778/factory-demo --add-label failed
+[2B] rethrown: injected: spawn failure (T6 演练 2B)
+[2B] handoff file exists: true
+[4/5] ledger entries: 6
+  - spec-approve {"kind":"auto-pass","signerFact":"分级判据均未触发，机械验证项全部通过，自动过"}
+  - spec-approve {"kind":"human","criterion":"判据二：先例性"}
+  - spec-approve {"kind":"human","criterion":"判据一：不可逆或外部可见"}
+  - spec-approve {"kind":"human","criterion":"机械验证项未全部通过"}
+  - intent-accept {"kind":"human","criterion":"保留人闸：价值判断 + 消耗下游整条链，v1 无自动通道"}
+  - review-approve {"kind":"human","criterion":"保留人闸：合并不可逆且外部可见（判据一），v1 无黑区"}
