@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "3dd2d2783e19e49d49e7e74266ed40e5d4130f01",
-    "sourceSha256": "13069d51b1f86a89a50f44bb9d49416c7e937aa256219cea30279c7c907b5074",
+    "head": "2da68e734e15c1cab4ccae99b33e4a6959ce5eb7",
+    "sourceSha256": "4176a72ce274863ef15a20df23aa8515bc2ee809c071911dabd56ffdbaacf646",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "3dd2d2783e19e49d49e7e74266ed40e5d4130f01",
-  "sourceSha256": "13069d51b1f86a89a50f44bb9d49416c7e937aa256219cea30279c7c907b5074",
+  "head": "2da68e734e15c1cab4ccae99b33e4a6959ce5eb7",
+  "sourceSha256": "4176a72ce274863ef15a20df23aa8515bc2ee809c071911dabd56ffdbaacf646",
   "counts": {
     "public": {
       "skills": 47,
@@ -23,13 +23,13 @@
       "total": 96
     },
     "internal": {
-      "hookFiles": 319,
+      "hookFiles": 327,
       "featureFiles": 84,
       "toolFiles": 61,
       "libFiles": 47,
       "templateHooks": 22,
-      "srcFiles": 1398,
-      "total": 1420
+      "srcFiles": 1409,
+      "total": 1431
     },
     "generated": {
       "distFiles": 5066,
@@ -41,7 +41,7 @@
     },
     "skills": 47,
     "commands": 21,
-    "hookFiles": 319,
+    "hookFiles": 327,
     "workflows": 8,
     "agentDefinitions": 18,
     "promptLikeFiles": 61
@@ -393,23 +393,31 @@
       "src/hooks/self-improve/__tests__/session-isolation.test.ts",
       "src/hooks/session-end/__tests__/action-runner.test.ts",
       "src/hooks/session-end/__tests__/callbacks.test.ts",
+      "src/hooks/session-end/__tests__/chain-enqueuer.test.ts",
       "src/hooks/session-end/__tests__/cleanup-manifest.test.ts",
       "src/hooks/session-end/__tests__/duplicate-notifications.test.ts",
+      "src/hooks/session-end/__tests__/guardrails.test.ts",
       "src/hooks/session-end/__tests__/mode-state-cleanup.test.ts",
       "src/hooks/session-end/__tests__/openclaw-session-end.test.ts",
       "src/hooks/session-end/__tests__/python-repl-cleanup.test.ts",
+      "src/hooks/session-end/__tests__/routing.test.ts",
       "src/hooks/session-end/__tests__/session-duration.test.ts",
       "src/hooks/session-end/__tests__/session-end-bridge-cleanup.test.ts",
       "src/hooks/session-end/__tests__/session-end-timeout.test.ts",
+      "src/hooks/session-end/__tests__/spawn-next.test.ts",
       "src/hooks/session-end/__tests__/subdirectory-cwd.test.ts",
       "src/hooks/session-end/__tests__/team-cleanup.test.ts",
       "src/hooks/session-end/__tests__/worker.test.ts",
       "src/hooks/session-end/action-runner.ts",
       "src/hooks/session-end/action-watchdog.ts",
       "src/hooks/session-end/callbacks.ts",
+      "src/hooks/session-end/chain-enqueuer.ts",
       "src/hooks/session-end/cleanup-manifest.ts",
       "src/hooks/session-end/foreground-bootstrap.ts",
+      "src/hooks/session-end/guardrails.ts",
       "src/hooks/session-end/index.ts",
+      "src/hooks/session-end/routing.ts",
+      "src/hooks/session-end/spawn-next.ts",
       "src/hooks/session-end/worker.ts",
       "src/hooks/setup/README.md",
       "src/hooks/setup/__tests__/prune.test.ts",
@@ -6203,23 +6211,31 @@
       "src/hooks/self-improve/__tests__/session-isolation.test.ts",
       "src/hooks/session-end/__tests__/action-runner.test.ts",
       "src/hooks/session-end/__tests__/callbacks.test.ts",
+      "src/hooks/session-end/__tests__/chain-enqueuer.test.ts",
       "src/hooks/session-end/__tests__/cleanup-manifest.test.ts",
       "src/hooks/session-end/__tests__/duplicate-notifications.test.ts",
+      "src/hooks/session-end/__tests__/guardrails.test.ts",
       "src/hooks/session-end/__tests__/mode-state-cleanup.test.ts",
       "src/hooks/session-end/__tests__/openclaw-session-end.test.ts",
       "src/hooks/session-end/__tests__/python-repl-cleanup.test.ts",
+      "src/hooks/session-end/__tests__/routing.test.ts",
       "src/hooks/session-end/__tests__/session-duration.test.ts",
       "src/hooks/session-end/__tests__/session-end-bridge-cleanup.test.ts",
       "src/hooks/session-end/__tests__/session-end-timeout.test.ts",
+      "src/hooks/session-end/__tests__/spawn-next.test.ts",
       "src/hooks/session-end/__tests__/subdirectory-cwd.test.ts",
       "src/hooks/session-end/__tests__/team-cleanup.test.ts",
       "src/hooks/session-end/__tests__/worker.test.ts",
       "src/hooks/session-end/action-runner.ts",
       "src/hooks/session-end/action-watchdog.ts",
       "src/hooks/session-end/callbacks.ts",
+      "src/hooks/session-end/chain-enqueuer.ts",
       "src/hooks/session-end/cleanup-manifest.ts",
       "src/hooks/session-end/foreground-bootstrap.ts",
+      "src/hooks/session-end/guardrails.ts",
       "src/hooks/session-end/index.ts",
+      "src/hooks/session-end/routing.ts",
+      "src/hooks/session-end/spawn-next.ts",
       "src/hooks/session-end/worker.ts",
       "src/hooks/setup/README.md",
       "src/hooks/setup/__tests__/prune.test.ts",
@@ -32960,6 +32976,11 @@
         "path": "docs/design/project-session-manager.md"
       },
       {
+        "id": "docs/factory/t6-acceptance/acceptance-comment.md",
+        "kind": "other",
+        "path": "docs/factory/t6-acceptance/acceptance-comment.md"
+      },
+      {
         "id": "docs/geobench.md",
         "kind": "other",
         "path": "docs/geobench.md"
@@ -36550,6 +36571,11 @@
         "path": "src/cli/commands/doctor-team-routing.ts"
       },
       {
+        "id": "src/cli/commands/factory.ts",
+        "kind": "src",
+        "path": "src/cli/commands/factory.ts"
+      },
+      {
         "id": "src/cli/commands/intake.ts",
         "kind": "src",
         "path": "src/cli/commands/intake.ts"
@@ -36703,6 +36729,16 @@
         "id": "src/constants/names.ts",
         "kind": "src",
         "path": "src/constants/names.ts"
+      },
+      {
+        "id": "src/factory/__tests__/listener.test.ts",
+        "kind": "src",
+        "path": "src/factory/__tests__/listener.test.ts"
+      },
+      {
+        "id": "src/factory/listener.ts",
+        "kind": "src",
+        "path": "src/factory/listener.ts"
       },
       {
         "id": "src/features/AGENTS.md",
@@ -38540,6 +38576,11 @@
         "path": "src/hooks/session-end/__tests__/callbacks.test.ts"
       },
       {
+        "id": "src/hooks/session-end/__tests__/chain-enqueuer.test.ts",
+        "kind": "hook",
+        "path": "src/hooks/session-end/__tests__/chain-enqueuer.test.ts"
+      },
+      {
         "id": "src/hooks/session-end/__tests__/cleanup-manifest.test.ts",
         "kind": "hook",
         "path": "src/hooks/session-end/__tests__/cleanup-manifest.test.ts"
@@ -38548,6 +38589,11 @@
         "id": "src/hooks/session-end/__tests__/duplicate-notifications.test.ts",
         "kind": "hook",
         "path": "src/hooks/session-end/__tests__/duplicate-notifications.test.ts"
+      },
+      {
+        "id": "src/hooks/session-end/__tests__/guardrails.test.ts",
+        "kind": "hook",
+        "path": "src/hooks/session-end/__tests__/guardrails.test.ts"
       },
       {
         "id": "src/hooks/session-end/__tests__/mode-state-cleanup.test.ts",
@@ -38565,6 +38611,11 @@
         "path": "src/hooks/session-end/__tests__/python-repl-cleanup.test.ts"
       },
       {
+        "id": "src/hooks/session-end/__tests__/routing.test.ts",
+        "kind": "hook",
+        "path": "src/hooks/session-end/__tests__/routing.test.ts"
+      },
+      {
         "id": "src/hooks/session-end/__tests__/session-duration.test.ts",
         "kind": "hook",
         "path": "src/hooks/session-end/__tests__/session-duration.test.ts"
@@ -38578,6 +38629,11 @@
         "id": "src/hooks/session-end/__tests__/session-end-timeout.test.ts",
         "kind": "hook",
         "path": "src/hooks/session-end/__tests__/session-end-timeout.test.ts"
+      },
+      {
+        "id": "src/hooks/session-end/__tests__/spawn-next.test.ts",
+        "kind": "hook",
+        "path": "src/hooks/session-end/__tests__/spawn-next.test.ts"
       },
       {
         "id": "src/hooks/session-end/__tests__/subdirectory-cwd.test.ts",
@@ -38610,6 +38666,11 @@
         "path": "src/hooks/session-end/callbacks.ts"
       },
       {
+        "id": "src/hooks/session-end/chain-enqueuer.ts",
+        "kind": "hook",
+        "path": "src/hooks/session-end/chain-enqueuer.ts"
+      },
+      {
         "id": "src/hooks/session-end/cleanup-manifest.ts",
         "kind": "hook",
         "path": "src/hooks/session-end/cleanup-manifest.ts"
@@ -38620,9 +38681,24 @@
         "path": "src/hooks/session-end/foreground-bootstrap.ts"
       },
       {
+        "id": "src/hooks/session-end/guardrails.ts",
+        "kind": "hook",
+        "path": "src/hooks/session-end/guardrails.ts"
+      },
+      {
         "id": "src/hooks/session-end/index.ts",
         "kind": "hook",
         "path": "src/hooks/session-end/index.ts"
+      },
+      {
+        "id": "src/hooks/session-end/routing.ts",
+        "kind": "hook",
+        "path": "src/hooks/session-end/routing.ts"
+      },
+      {
+        "id": "src/hooks/session-end/spawn-next.ts",
+        "kind": "hook",
+        "path": "src/hooks/session-end/spawn-next.ts"
       },
       {
         "id": "src/hooks/session-end/worker.ts",
@@ -53652,6 +53728,26 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/commands/factory.ts",
+        "to": "external:chalk",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "external:commander",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "src/factory/listener.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/commands/intake.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -54069,6 +54165,11 @@
       {
         "from": "src/cli/index.ts",
         "to": "src/cli/commands/doctor-team-routing.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/index.ts",
+        "to": "src/cli/commands/factory.ts",
         "kind": "imports"
       },
       {
@@ -54585,6 +54686,106 @@
         "from": "src/constants/index.ts",
         "to": "src/constants/names.ts",
         "kind": "type-exports"
+      },
+      {
+        "from": "src/factory/__tests__/listener.test.ts",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/listener.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/listener.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/listener.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/listener.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/listener.test.ts",
+        "to": "src/factory/listener.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/listener.test.ts",
+        "to": "src/factory/listener.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/listener.test.ts",
+        "to": "src/lib/file-lock.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/listener.test.ts",
+        "to": "src/lib/file-lock.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/listener.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/listener.ts",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/listener.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/listener.ts",
+        "to": "external:http",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/listener.ts",
+        "to": "external:http",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/listener.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/listener.ts",
+        "to": "src/hooks/session-end/guardrails.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/listener.ts",
+        "to": "src/hooks/session-end/routing.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/listener.ts",
+        "to": "src/hooks/session-end/routing.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/listener.ts",
+        "to": "src/hooks/session-end/spawn-next.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/listener.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
       },
       {
         "from": "src/features/__tests__/checkpoint.test.ts",
@@ -63517,6 +63718,46 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/hooks/session-end/__tests__/chain-enqueuer.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/chain-enqueuer.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/chain-enqueuer.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/chain-enqueuer.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/chain-enqueuer.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/chain-enqueuer.test.ts",
+        "to": "src/hooks/session-end/chain-enqueuer.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/chain-enqueuer.test.ts",
+        "to": "src/hooks/session-end/guardrails.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/chain-enqueuer.test.ts",
+        "to": "src/hooks/session-end/guardrails.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/hooks/session-end/__tests__/cleanup-manifest.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -63585,6 +63826,46 @@
         "from": "src/hooks/session-end/__tests__/duplicate-notifications.test.ts",
         "to": "src/notifications/index.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/guardrails.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/guardrails.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/guardrails.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/guardrails.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/guardrails.test.ts",
+        "to": "src/hooks/session-end/guardrails.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/guardrails.test.ts",
+        "to": "src/hooks/session-end/guardrails.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/guardrails.test.ts",
+        "to": "src/lib/file-lock.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/guardrails.test.ts",
+        "to": "src/lib/file-lock.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/hooks/session-end/__tests__/mode-state-cleanup.test.ts",
@@ -63680,6 +63961,21 @@
         "from": "src/hooks/session-end/__tests__/python-repl-cleanup.test.ts",
         "to": "src/hooks/session-end/index.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/routing.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/routing.test.ts",
+        "to": "src/hooks/session-end/routing.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/routing.test.ts",
+        "to": "src/hooks/session-end/routing.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/hooks/session-end/__tests__/session-duration.test.ts",
@@ -63780,6 +64076,41 @@
         "from": "src/hooks/session-end/__tests__/session-end-timeout.test.ts",
         "to": "src/hooks/session-end/index.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/spawn-next.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/spawn-next.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/spawn-next.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/spawn-next.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/spawn-next.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/spawn-next.test.ts",
+        "to": "src/hooks/session-end/spawn-next.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/spawn-next.test.ts",
+        "to": "src/hooks/session-end/spawn-next.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/hooks/session-end/__tests__/subdirectory-cwd.test.ts",
@@ -63977,6 +64308,46 @@
         "kind": "imports"
       },
       {
+        "from": "src/hooks/session-end/chain-enqueuer.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/chain-enqueuer.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/chain-enqueuer.ts",
+        "to": "src/hooks/session-end/guardrails.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/chain-enqueuer.ts",
+        "to": "src/hooks/session-end/routing.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/chain-enqueuer.ts",
+        "to": "src/hooks/session-end/routing.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/session-end/chain-enqueuer.ts",
+        "to": "src/hooks/session-end/spawn-next.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/chain-enqueuer.ts",
+        "to": "src/hooks/session-end/spawn-next.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/session-end/chain-enqueuer.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/session-end/cleanup-manifest.ts",
         "to": "external:crypto",
         "kind": "imports"
@@ -64017,6 +64388,31 @@
         "kind": "imports"
       },
       {
+        "from": "src/hooks/session-end/guardrails.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/guardrails.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/guardrails.ts",
+        "to": "src/lib/file-lock.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/guardrails.ts",
+        "to": "src/lib/file-lock.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/session-end/guardrails.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/session-end/index.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -64044,6 +64440,11 @@
       {
         "from": "src/hooks/session-end/index.ts",
         "to": "src/hooks/session-end/callbacks.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/index.ts",
+        "to": "src/hooks/session-end/chain-enqueuer.ts",
         "kind": "imports"
       },
       {
@@ -64117,6 +64518,41 @@
         "kind": "imports"
       },
       {
+        "from": "src/hooks/session-end/spawn-next.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/spawn-next.ts",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/spawn-next.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/spawn-next.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/spawn-next.ts",
+        "to": "src/hooks/session-end/routing.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/spawn-next.ts",
+        "to": "src/hooks/session-end/routing.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/session-end/spawn-next.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/session-end/worker.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -64143,6 +64579,11 @@
       },
       {
         "from": "src/hooks/session-end/worker.ts",
+        "to": "src/hooks/session-end/chain-enqueuer.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/worker.ts",
         "to": "src/hooks/session-end/cleanup-manifest.ts",
         "kind": "imports"
       },
@@ -64154,6 +64595,11 @@
       {
         "from": "src/hooks/session-end/worker.ts",
         "to": "src/hooks/session-end/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/worker.ts",
+        "to": "src/hooks/session-end/spawn-next.ts",
         "kind": "imports"
       },
       {
@@ -81863,12 +82309,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 7100,
-      "edgeCount": 7970,
-      "importEdgeCount": 6578,
+      "nodeCount": 7112,
+      "edgeCount": 8044,
+      "importEdgeCount": 6639,
       "registerEdgeCount": 68
     }
   },
-  "inventorySha256": "5011152512e7a2aca4a45ee6066813d13a614ba1851bf58d61760a6177f7b0d1",
-  "manifestSha256": "b72e6033f459c3b9d5d097227416541499b3561315565916d1bf17c26a62f5bf"
+  "inventorySha256": "a90d755eba81051c16d5a253f9376793cdbfe4565876f781527b98984e7acd45",
+  "manifestSha256": "e78a4fd3edfdb7e98e68efbe92897b1100412711a4ec3c0aa0894647ebe1c775"
 }
