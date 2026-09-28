@@ -1,0 +1,111 @@
+import { describe, it, expect, vi } from 'vitest';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { executeSpawnNext, planSpawnNext, spawnNextAlertComment, type SpawnNextChain, type SpawnFn } from '../spawn-next.js';
+
+const chain: SpawnNextChain = {
+  outcome: 'success',
+  reason: 'clear',
+  routeTable: { 'success:clear': { stage: 'launch', skill: 'launch' }, 'success:*': { stage: 'fallback', skill: 'fallback' } },
+  sessionId: 'sess-1',
+  handoffContext: 'context body',
+  tracker: { repo: 'owner/repo', issue: 42, nextLabel: 'in-launch', failedLabel: 'failed' },
+};
+
+const sessions = (): Array<[string, string[]]> => [];
+const spawnRecording = (): { spawnFn: SpawnFn; calls: Array<[string, string[]]> } => {
+  const calls = sessions();
+  const spawnFn: SpawnFn = (command, args) => { calls.push([command, args]); return { unref() {} }; };
+  return { spawnFn, calls };
+};
+
+describe('planSpawnNext', () => {
+  it('routes exact key hit to the next stage plan', () => {
+    const plan = planSpawnNext(chain, '/omc-root');
+    expect(plan?.directive).toEqual({ stage: 'launch', skill: 'launch' });
+    expect(plan?.handoffPath).toBe(path.join('/omc-root', 'handoffs', 'sess-1-launch.json'));
+    expect(plan?.spawnArgv[0]).toBe('claude');
+    expect(plan?.spawnArgv.join(' ')).toContain('-p');
+    expect(plan?.spawnArgv.join(' ')).toContain('launch');
+  });
+
+  it('falls back to the wildcard key', () => {
+    const plan = planSpawnNext({ ...chain, reason: 'other' }, '/omc-root');
+    expect(plan?.directive).toEqual({ stage: 'fallback', skill: 'fallback' });
+  });
+
+  it('returns null when no route matches', () => {
+    expect(planSpawnNext({ ...chain, outcome: 'failed' as const }, '/omc-root')).toBeNull();
+  });
+
+  it('builds tracker writeback commands only when a tracker is configured', () => {
+    const withTracker = planSpawnNext(chain, '/omc-root');
+    expect(withTracker?.trackerCommands.join('\n')).toContain('gh issue edit 42 --repo owner/repo --add-label in-launch');
+    expect(withTracker?.trackerCommands.join('\n')).toContain('gh issue comment 42 --repo owner/repo');
+    const withoutTracker = planSpawnNext({ ...chain, tracker: undefined }, '/omc-root');
+    expect(withoutTracker?.trackerCommands).toEqual([]);
+  });
+});
+
+describe('spawnNextAlertComment', () => {
+  it('names the failing outcome and reason with no-retry semantics', () => {
+    const comment = spawnNextAlertComment(chain);
+    expect(comment).toContain('success:clear');
+    expect(comment).toContain('无自动重试');
+  });
+});
+
+describe('executeSpawnNext', () => {
+  it('writes the handoff file and spawns the next session plus tracker writebacks', () => {
+    const { spawnFn, calls } = spawnRecording();
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'spawn-next-'));
+    try {
+      executeSpawnNext(chain, directory, spawnFn);
+      const handoffPath = path.join(directory, '.omc', 'handoffs', 'sess-1-launch.json');
+      const handoff = JSON.parse(fs.readFileSync(handoffPath, 'utf8')) as { sessionId: string; next: unknown; context: string };
+      expect(handoff.sessionId).toBe('sess-1');
+      expect(handoff.next).toEqual({ stage: 'launch', skill: 'launch' });
+      expect(handoff.context).toBe('context body');
+      const claudeCall = calls.find(([command]) => command === 'claude');
+      expect(claudeCall).toBeDefined();
+      expect(calls.filter(([command]) => command === 'gh')).toHaveLength(2);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('does nothing when the route misses', () => {
+    const { spawnFn, calls } = spawnRecording();
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'spawn-next-'));
+    try {
+      executeSpawnNext({ ...chain, outcome: 'failed' as const }, directory, spawnFn);
+      expect(fs.existsSync(path.join(directory, '.omc'))).toBe(false);
+      expect(calls).toEqual([]);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('alerts the tracker and rethrows when spawning the next session fails', () => {
+    const calls = sessions();
+    const failingSpawn: SpawnFn = (command, args) => {
+      if (command === 'claude') throw new Error('spawn-failure');
+      calls.push([command, args]);
+      return { unref() {} };
+    };
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'spawn-next-'));
+    try {
+      expect(() => executeSpawnNext(chain, directory, failingSpawn)).toThrow('spawn-failure');
+      const ghCalls = calls.filter(([command]) => command === 'gh');
+      expect(ghCalls).toHaveLength(2);
+      const comment = ghCalls.find(([, args]) => args.includes('comment'));
+      expect(comment?.[1].join(' ')).toContain('--body');
+      expect(comment?.[1].join(' ')).toContain('无自动重试');
+      const label = ghCalls.find(([, args]) => args.includes('edit'));
+      expect(label?.[1].join(' ')).toContain('failed');
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});

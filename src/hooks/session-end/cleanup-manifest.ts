@@ -4,7 +4,7 @@ import { createHash, randomUUID } from 'crypto';
 import { atomicWriteJsonSync } from '../../lib/atomic-write.js';
 import { getOmcRoot, validateSessionId } from '../../lib/worktree-paths.js';
 
-export type SessionEndActionName = 'foreground-cleanup' | 'wiki-capture' | 'team-cleanup' | 'python-cleanup' | 'reply-cleanup' | 'callback' | 'notification' | 'openclaw';
+export type SessionEndActionName = 'foreground-cleanup' | 'wiki-capture' | 'team-cleanup' | 'python-cleanup' | 'reply-cleanup' | 'callback' | 'notification' | 'openclaw' | 'spawn-next';
 export type ActionStatus = 'pending' | 'claimed' | 'retryable' | 'completed' | 'expired';
 
 export interface SessionEndActionState {
@@ -57,7 +57,7 @@ function withOpenClawRouting(payload: Record<string, unknown>): Record<string, u
 
 const ACTIONS: Array<[SessionEndActionName, 'required' | 'best-effort']> = [
   ['foreground-cleanup', 'required'], ['wiki-capture', 'required'], ['team-cleanup', 'required'], ['python-cleanup', 'required'], ['reply-cleanup', 'required'],
-  ['callback', 'best-effort'], ['notification', 'best-effort'], ['openclaw', 'best-effort'],
+  ['callback', 'best-effort'], ['notification', 'best-effort'], ['openclaw', 'best-effort'], ['spawn-next', 'best-effort'],
 ];
 const TEST_PRODUCER_GRACE_ENV = 'OMC_SESSION_END_TEST_PRODUCER_GRACE_MS';
 const PRODUCER_GRACE_MS = process.env.NODE_ENV === 'test' && /^\d+$/.test(process.env[TEST_PRODUCER_GRACE_ENV] ?? '')
