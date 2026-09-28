@@ -1,7 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, afterEach } from 'vitest';
 import { createHmac } from 'crypto';
+import { mkdtempSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import {
   buildIntentPrompt,
+  MAX_BODY_BYTES,
   processEvent,
   routeTrackerEvent,
   startListener,
@@ -10,13 +14,28 @@ import {
   type ListenerConfig,
   type TrackerEvent,
 } from '../listener.js';
+import { acquireFileLockSync, releaseFileLockSync, type FileLockHandle } from '../../lib/file-lock.js';
+import { getOmcRoot } from '../../lib/worktree-paths.js';
 
 const SECRET = 'test-secret';
 const WHITELIST = ['pangpang778/factory-demo'];
 
-function config(overrides: Partial<ListenerConfig> = {}): ListenerConfig {
-  return { port: 0, secret: SECRET, whitelist: WHITELIST, cwd: process.cwd(), ...overrides };
+const tempCwds: string[] = [];
+
+function tempCwd(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'omc-listener-'));
+  tempCwds.push(dir);
+  return dir;
 }
+
+function config(overrides: Partial<ListenerConfig> = {}): ListenerConfig {
+  return { port: 0, secret: SECRET, whitelist: WHITELIST, cwd: tempCwd(), ...overrides };
+}
+
+afterEach(() => {
+  for (const dir of tempCwds) rmSync(dir, { recursive: true, force: true });
+  tempCwds.length = 0;
+});
 
 function event(overrides: Partial<TrackerEvent> = {}): TrackerEvent {
   return {
@@ -110,12 +129,56 @@ describe('processEvent', () => {
     expect(spawned).toEqual([]);
     expect(audits).toEqual([{ kind: 'rejected', status: 403, reason: 'repository outside whitelist: someone/else' }]);
   });
+
+  it('discards and audits an issue url outside the whitelisted repo', () => {
+    const audits: Record<string, unknown>[] = [];
+    const spawned: Array<[string, string[]]> = [];
+    const result = processEvent(
+      event({ issue: { number: 7, title: 'x', html_url: 'https://evil.example/pangpang778/factory-demo/issues/7' } }),
+      config(),
+      { spawner: (cmd, args) => spawned.push([cmd, args]), audit: (r) => audits.push(r) },
+    );
+    expect(result).toMatchObject({ status: 204, kind: 'discarded' });
+    expect(spawned).toEqual([]);
+    expect(audits[0]).toMatchObject({ kind: 'discarded', reason: 'issue url outside whitelisted repo' });
+  });
+
+  it('discards and audits when the intent chain guardrail holds the serial slot', () => {
+    const cfg = config();
+    const lockPath = join(getOmcRoot(cfg.cwd), 'state', 'factory', 'chain-pangpang778-factory-demo-7.active.lock');
+    const held: FileLockHandle | null = acquireFileLockSync(lockPath);
+    expect(held).not.toBeNull();
+    try {
+      const audits: Record<string, unknown>[] = [];
+      const spawned: Array<[string, string[]]> = [];
+      const result = processEvent(event(), cfg, {
+        spawner: (cmd, args) => spawned.push([cmd, args]),
+        audit: (r) => audits.push(r),
+      });
+      expect(result).toMatchObject({ status: 204, kind: 'discarded' });
+      expect(spawned).toEqual([]);
+      expect(audits[0]).toMatchObject({ kind: 'discarded', reason: 'guardrail: serial-conflict' });
+    } finally {
+      if (held) releaseFileLockSync(held);
+    }
+  });
+
+  it('releases the chain serial slot after a successful spawn', () => {
+    const cfg = config();
+    const lockPath = join(getOmcRoot(cfg.cwd), 'state', 'factory', 'chain-pangpang778-factory-demo-7.active.lock');
+    const result = processEvent(event(), cfg, { spawner: () => {} });
+    expect(result.kind).toBe('accepted');
+    const probe: FileLockHandle | null = acquireFileLockSync(lockPath);
+    expect(probe).not.toBeNull();
+    if (probe) releaseFileLockSync(probe);
+  });
 });
 
 describe('listener server', () => {
   it('rejects bad HMAC with 401 and never routes', async () => {
     const spawned: Array<[string, string[]]> = [];
-    const server = await startListener(config({ port: 0 }), { spawner: (cmd, args) => spawned.push([cmd, args]) });
+    const cfg = config({ port: 0 });
+    const server = await startListener(cfg, { spawner: (cmd, args) => spawned.push([cmd, args]) });
     try {
       const addr = server.address();
       if (!addr || typeof addr === 'string') throw new Error('no port');
@@ -127,13 +190,32 @@ describe('listener server', () => {
       expect(res.status).toBe(401);
       expect(spawned).toEqual([]);
     } finally {
-      stopListener(server, process.cwd());
+      stopListener(server, cfg.cwd);
+    }
+  });
+
+  it('returns 413 and never routes when the body exceeds the size cap', async () => {
+    const spawned: Array<[string, string[]]> = [];
+    const cfg = config({ port: 0 });
+    const server = await startListener(cfg, { spawner: (cmd, args) => spawned.push([cmd, args]) });
+    try {
+      const addr = server.address();
+      if (!addr || typeof addr === 'string') throw new Error('no port');
+      const res = await fetch(`http://127.0.0.1:${addr.port}`, {
+        method: 'POST',
+        body: 'x'.repeat(MAX_BODY_BYTES + 1),
+      });
+      expect(res.status).toBe(413);
+      expect(spawned).toEqual([]);
+    } finally {
+      stopListener(server, cfg.cwd);
     }
   });
 
   it('accepts a signed legal event end to end and exposes liveness on /status', async () => {
     const spawned: Array<[string, string[]]> = [];
-    const server = await startListener(config({ port: 0 }), { spawner: (cmd, args) => spawned.push([cmd, args]) });
+    const cfg = config({ port: 0 });
+    const server = await startListener(cfg, { spawner: (cmd, args) => spawned.push([cmd, args]) });
     try {
       const addr = server.address();
       if (!addr || typeof addr === 'string') throw new Error('no port');
@@ -150,7 +232,7 @@ describe('listener server', () => {
       expect(spawned[0][0]).toBe('claude');
       expect(spawned[0][1][0]).toBe('-p');
     } finally {
-      stopListener(server, process.cwd());
+      stopListener(server, cfg.cwd);
     }
   });
 });

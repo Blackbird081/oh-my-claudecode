@@ -39,12 +39,28 @@ describe('planSpawnNext', () => {
     expect(planSpawnNext({ ...chain, outcome: 'failed' as const }, '/omc-root')).toBeNull();
   });
 
-  it('builds tracker writeback commands only when a tracker is configured', () => {
+  it('builds tracker writeback argv arrays only when a tracker is configured', () => {
     const withTracker = planSpawnNext(chain, '/omc-root');
-    expect(withTracker?.trackerCommands.join('\n')).toContain('gh issue edit 42 --repo owner/repo --add-label in-launch');
-    expect(withTracker?.trackerCommands.join('\n')).toContain('gh issue comment 42 --repo owner/repo');
+    expect(withTracker?.trackerCommands[0]).toEqual(['gh', 'issue', 'edit', '42', '--repo', 'owner/repo', '--add-label', 'in-launch']);
+    expect(withTracker?.trackerCommands[1]?.slice(0, 6)).toEqual(['gh', 'issue', 'comment', '42', '--repo', 'owner/repo']);
     const withoutTracker = planSpawnNext({ ...chain, tracker: undefined }, '/omc-root');
     expect(withoutTracker?.trackerCommands).toEqual([]);
+  });
+
+  it('rejects a chain with a path-traversal session id before planning', () => {
+    const { spawnFn, calls } = spawnRecording();
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'spawn-next-'));
+    try {
+      expect(() => executeSpawnNext({ ...chain, sessionId: '../evil' }, directory, spawnFn)).toThrow(/Invalid session ID/);
+      expect(calls).toEqual([]);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects a chain whose tracker repo or label carries shell metacharacters', () => {
+    expect(() => planSpawnNext({ ...chain, tracker: { ...chain.tracker!, repo: 'owner/repo; rm -rf /' } }, '/omc-root')).toThrow(/invalid tracker repo/);
+    expect(() => planSpawnNext({ ...chain, tracker: { ...chain.tracker!, nextLabel: 'a b; touch /tmp/x' } }, '/omc-root')).toThrow(/invalid tracker label/);
   });
 });
 

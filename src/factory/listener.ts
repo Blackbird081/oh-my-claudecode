@@ -10,10 +10,11 @@
 
 import { createHmac, timingSafeEqual } from 'crypto';
 import { createServer, type Server, type ServerResponse, type IncomingMessage } from 'http';
-import { spawn } from 'child_process';
 import { appendFileSync, mkdirSync, writeFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { decideNextStage, type ChainDirective, type RouteTable } from '../hooks/session-end/routing.js';
+import { acquireChainSlot, releaseChainSlot } from '../hooks/session-end/guardrails.js';
+import { defaultSpawnFn } from '../hooks/session-end/spawn-next.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
 
 export const INTAKE_LABEL = 'intake';
@@ -65,6 +66,14 @@ export function buildIntentPrompt(directive: ChainDirective, issueNumber?: numbe
   return `/${directive.skill} 处理 tracker 进货：${target}。追问以 issue 评论回贴；回写契约：docs/intents/<slug>/ = 内容，issue 评论 = 记录指针，标签转 needs-review。`;
 }
 
+const ISSUE_URL_PATTERN = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/issues\/\d+$/;
+
+function issueUrlMatchesRepo(issueUrl: string | undefined, repo: string): boolean {
+  if (!issueUrl) return true;
+  if (!ISSUE_URL_PATTERN.test(issueUrl)) return false;
+  return issueUrl.startsWith(`https://github.com/${repo}/issues/`);
+}
+
 export interface ListenerConfig {
   port: number;
   secret: string;
@@ -108,10 +117,27 @@ export function processEvent(event: TrackerEvent, config: ListenerConfig, deps: 
     return { status: 204, kind: 'discarded', detail: outcome.reason };
   }
 
+  const repo = event.repository?.full_name ?? '';
+  if (!issueUrlMatchesRepo(outcome.issueUrl, repo)) {
+    audit({ kind: 'discarded', reason: 'issue url outside whitelisted repo', url: outcome.issueUrl });
+    return { status: 204, kind: 'discarded', detail: 'issue url outside whitelisted repo' };
+  }
+
+  const intentId = `${repo}#${outcome.issueNumber ?? 0}`.replace(/[^\w.-]/g, '-');
+  const slot = acquireChainSlot(intentId, join(getOmcRoot(config.cwd), 'state', 'factory'));
+  if (!slot.allowed) {
+    audit({ kind: 'discarded', reason: `guardrail: ${slot.reason}`, detail: slot.detail, intentId });
+    return { status: 204, kind: 'discarded', detail: `guardrail ${slot.reason}: ${slot.detail}` };
+  }
+
   const prompt = buildIntentPrompt(outcome.directive, outcome.issueNumber, outcome.issueUrl);
   const args = ['-p', prompt];
-  if (deps.spawner) deps.spawner('claude', args);
-  else spawn('claude', args, { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+  try {
+    if (deps.spawner) deps.spawner('claude', args);
+    else defaultSpawnFn('claude', args);
+  } finally {
+    releaseChainSlot(slot);
+  }
   audit({ kind: 'routed', stage: outcome.directive.stage, skill: outcome.directive.skill, issue: outcome.issueUrl ?? outcome.issueNumber });
   return { status: 202, kind: 'accepted', detail: `spawned ${outcome.directive.stage} session (${outcome.directive.skill})` };
 }
@@ -122,8 +148,15 @@ function pidFilePath(cwd: string): string {
 
 export function startListener(config: ListenerConfig, deps: ListenerDeps = {}): Promise<Server> {
   const startedAt = new Date().toISOString();
+  let tail: Promise<void> = Promise.resolve();
   const server = createServer((req, res) => {
-    void handleRequest(req, res, config, deps, startedAt);
+    // Serial v1: each request is fully handled (body drained -> verify ->
+    // spawn) before the next one starts.
+    tail = tail
+      .then(() => handleRequest(req, res, config, deps, startedAt))
+      .catch(() => {
+        try { res.writeHead(500).end(); } catch { /* response already sent */ }
+      });
   });
   return new Promise((resolve) => {
     server.listen(config.port, () => {
@@ -143,9 +176,21 @@ export function stopListener(server: Server, cwd: string): void {
   server.close();
 }
 
+export const MAX_BODY_BYTES = 1024 * 1024;
+
 async function handleRequest(req: IncomingMessage, res: ServerResponse, config: ListenerConfig, deps: ListenerDeps, startedAt: string): Promise<void> {
   const chunks: Buffer[] = [];
-  for await (const chunk of req) chunks.push(chunk as Buffer);
+  let total = 0;
+  for await (const chunk of req) {
+    total += (chunk as Buffer).length;
+    if (total > MAX_BODY_BYTES) {
+      res.writeHead(413, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'payload too large' }));
+      req.destroy();
+      return;
+    }
+    chunks.push(chunk as Buffer);
+  }
   const raw = Buffer.concat(chunks).toString('utf8');
 
   if (req.method === 'GET' && req.url === '/status') {
@@ -158,7 +203,6 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, config: 
     return;
   }
 
-  // Serial v1: every POST body drains before the next event spawns.
   const sig = req.headers['x-hub-signature-256'];
   if (!verifySignature(config.secret, raw, Array.isArray(sig) ? sig[0] : sig)) {
     res.writeHead(401, { 'content-type': 'application/json' });

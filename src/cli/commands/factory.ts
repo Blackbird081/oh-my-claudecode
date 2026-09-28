@@ -24,13 +24,12 @@ export function factoryCommand(): Command {
     .command('listen')
     .description('Run the intake listener daemon: HMAC-verified webhook events -> intake label gate -> headless intent sessions')
     .option('--port <n>', 'port to listen on (transport adapters forward here)', '7788')
-    .option('--secret <s>', 'HMAC secret (defaults to OMC_FACTORY_HMAC_SECRET env)')
     .requiredOption('--repo <names>', 'repository whitelist, comma-separated owner/name')
     .option('--cwd <dir>', 'repository whose .omc state root the daemon writes to', process.cwd())
-    .action((options: { port: string; secret?: string; repo: string; cwd: string }) => {
-      const secret = options.secret ?? process.env.OMC_FACTORY_HMAC_SECRET;
+    .action((options: { port: string; repo: string; cwd: string }) => {
+      const secret = process.env.OMC_FACTORY_HMAC_SECRET;
       if (!secret) {
-        console.error(chalk.red('refused: no HMAC secret. Pass --secret or set OMC_FACTORY_HMAC_SECRET.'));
+        console.error(chalk.red('refused: no HMAC secret. Set OMC_FACTORY_HMAC_SECRET.'));
         process.exitCode = 1;
         return;
       }

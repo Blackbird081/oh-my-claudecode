@@ -12,6 +12,7 @@ import {
   type ChainSlotResult,
   type ChainSlotPermit,
 } from '../guardrails.js';
+import { acquireFileLockSync, releaseFileLockSync, type FileLockHandle } from '../../../lib/file-lock.js';
 
 function permitOf(r: ChainSlotResult): ChainSlotPermit {
   if (!r.allowed) throw new Error(`expected permit, got ${r.reason}: ${r.detail}`);
@@ -138,5 +139,36 @@ describe('acquireChainSlot — daily N=10 cap', () => {
     expect(readChainStopMarker('intent-h', root)).not.toBeNull();
     clearChainStopMarker('intent-h', root);
     expect(existsSync(join(dir, 'chain-intent-h.stopped.json'))).toBe(false);
+  });
+
+  it('a daily-cap rejection releases the serial lock', () => {
+    const root = tempStateRoot();
+    for (let i = 0; i < DAILY_CHAIN_LIMIT; i++) {
+      releaseChainSlot(permitOf(acquireChainSlot('intent-cap', root)));
+    }
+    expect(acquireChainSlot('intent-cap', root).allowed).toBe(false);
+
+    const serialLock: FileLockHandle | null = acquireFileLockSync(
+      join(root, 'chain-intent-cap.active.lock'),
+      { staleLockMs: 24 * 60 * 60 * 1000 },
+    );
+    expect(serialLock).not.toBeNull();
+    if (serialLock) releaseFileLockSync(serialLock);
+  });
+
+  it('a held usage lock rejects without writing the counter or leaking the serial lock', () => {
+    const root = tempStateRoot();
+    const usageLock = acquireFileLockSync(join(root, 'chain-usage.json.lock'));
+    expect(usageLock).not.toBeNull();
+
+    const result = acquireChainSlot('intent-usage', root);
+    expect(result.allowed).toBe(false);
+
+    if (usageLock) releaseFileLockSync(usageLock);
+    expect(existsSync(join(root, 'chain-usage.json'))).toBe(false);
+
+    const retry = acquireChainSlot('intent-usage', root);
+    expect(retry.allowed).toBe(true);
+    if (retry.allowed) releaseChainSlot(retry);
   });
 });

@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { spawn } from 'child_process';
 import { decideNextStage, type ChainOutcome, type RouteTable } from './routing.js';
-import { getOmcRoot } from '../../lib/worktree-paths.js';
+import { getOmcRoot, validateSessionId } from '../../lib/worktree-paths.js';
 
 export interface SpawnNextTracker {
   repo: string;
@@ -25,23 +25,43 @@ export interface SpawnNextPlan {
   directive: { stage: string; skill: string };
   handoffPath: string;
   spawnArgv: string[];
-  trackerCommands: string[];
+  trackerCommands: string[][];
 }
 
 export type SpawnFn = (command: string, args: string[]) => { unref(): void };
+
+const REPO_PATTERN = /^[\w.-]+\/[\w.-]+$/;
+const LABEL_PATTERN = /^[\w.-]+$/;
+
+/**
+ * The chain rides a detached manifest job: every field that lands in a
+ * spawned argv or a filesystem path is validated here. An invalid chain is a
+ * hard reject (manifest failure), not a partial spawn.
+ */
+export function validateChainFields(chain: SpawnNextChain): void {
+  validateSessionId(chain.sessionId);
+  const tracker = chain.tracker;
+  if (tracker) {
+    if (!REPO_PATTERN.test(tracker.repo)) throw new Error(`invalid tracker repo: ${tracker.repo}`);
+    if (!LABEL_PATTERN.test(tracker.nextLabel) || !LABEL_PATTERN.test(tracker.failedLabel)) {
+      throw new Error(`invalid tracker label: ${tracker.nextLabel}/${tracker.failedLabel}`);
+    }
+  }
+}
 
 export function spawnNextAlertComment(chain: SpawnNextChain): string {
   return `链已停住：会话结束状态 ${chain.outcome}:${chain.reason} 触发下一环启动失败，需人工修复（v1 无自动重试）。`;
 }
 
 export function planSpawnNext(chain: SpawnNextChain, omcRoot: string): SpawnNextPlan | null {
+  validateChainFields(chain);
   const directive = decideNextStage(chain.outcome, chain.reason, chain.routeTable);
   if (!directive) return null;
   const handoffPath = path.join(omcRoot, 'handoffs', `${chain.sessionId}-${directive.stage}.json`);
   const trackerCommands = chain.tracker
     ? [
-        `gh issue edit ${chain.tracker.issue} --repo ${chain.tracker.repo} --add-label ${chain.tracker.nextLabel}`,
-        `gh issue comment ${chain.tracker.issue} --repo ${chain.tracker.repo} --body "链已推进到 ${directive.stage}，交接上下文：${path.basename(handoffPath)}"`,
+        ['gh', 'issue', 'edit', String(chain.tracker.issue), '--repo', chain.tracker.repo, '--add-label', chain.tracker.nextLabel],
+        ['gh', 'issue', 'comment', String(chain.tracker.issue), '--repo', chain.tracker.repo, '--body', `链已推进到 ${directive.stage}，交接上下文：${path.basename(handoffPath)}`],
       ]
     : [];
   return {
@@ -72,14 +92,30 @@ export function executeSpawnNext(chain: SpawnNextChain, directory: string, spawn
     }
     throw error;
   }
-  for (const command of plan.trackerCommands) {
-    const [name, ...args] = command.split(' ');
-    spawnFn(name, args);
+  for (const argv of plan.trackerCommands) {
+    spawnFn(argv[0], argv.slice(1));
   }
 }
 
-function defaultSpawnFn(command: string, args: string[]): { unref(): void } {
-  const child = spawn(command, args, { detached: true, stdio: 'ignore', windowsHide: true, shell: true });
+function quoteForCmd(arg: string): string {
+  return `"${arg.replace(/"/g, '\\"')}"`;
+}
+
+/**
+ * `claude` is a .cmd shim on Windows, which CreateProcess cannot exec
+ * directly; route that one case through cmd.exe with quoted args. Safe
+ * because every dynamic field in the argv was regex-validated upstream.
+ */
+export function defaultSpawnFn(command: string, args: string[]): { unref(): void } {
+  const child =
+    process.platform === 'win32' && command === 'claude'
+      ? spawn('cmd.exe', ['/d', '/s', '/c', `"${command} ${args.map(quoteForCmd).join(' ')}"`], {
+          detached: true,
+          stdio: 'ignore',
+          windowsHide: true,
+          windowsVerbatimArguments: true,
+        })
+      : spawn(command, args, { detached: true, stdio: 'ignore', windowsHide: true });
   child.unref();
   return child;
 }

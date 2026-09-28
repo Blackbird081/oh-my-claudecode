@@ -115,6 +115,14 @@ export function acquireChainSlot(
   }
 
   const usageLock = acquireFileLockSync(join(dir, "chain-usage.json.lock"));
+  if (!usageLock) {
+    releaseFileLockSync(serialLock);
+    return {
+      allowed: false,
+      reason: "serial-conflict",
+      detail: `链 ${intentId} 用量计数被其他进程持有，本次不发下一环`,
+    };
+  }
   try {
     const dateKey = chainDayKey(now);
     const usage = readUsageFile(stateRoot);
@@ -125,6 +133,7 @@ export function acquireChainSlot(
         { intentId, reason: "daily-cap", dateKey, count, stoppedAt: now.toISOString() },
         stateRoot,
       );
+      releaseFileLockSync(serialLock);
       return {
         allowed: false,
         reason: "daily-cap",
@@ -135,7 +144,7 @@ export function acquireChainSlot(
     writeFileSync(usagePath(stateRoot), JSON.stringify(usage, null, 2));
     return { allowed: true, intentId, serialLock, dateKey, linkIndex: count + 1 };
   } finally {
-    if (usageLock) releaseFileLockSync(usageLock);
+    releaseFileLockSync(usageLock);
   }
 }
 
