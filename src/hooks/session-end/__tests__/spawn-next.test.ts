@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { execFileSync } from 'child_process';
 import { executeSpawnNext, planSpawnNext, spawnNextAlertComment, type SpawnNextChain, type SpawnFn } from '../spawn-next.js';
 
 const chain: SpawnNextChain = {
@@ -78,6 +79,7 @@ describe('executeSpawnNext', () => {
   it('writes the handoff file, the next-link ledger, and spawns the next session plus tracker writebacks', () => {
     const { spawnFn, calls } = spawnRecording();
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'spawn-next-'));
+    execFileSync('git', ['init', '--quiet'], { cwd: directory, stdio: 'ignore' });
     try {
       executeSpawnNext(chain, directory, spawnFn);
       const handoffPath = path.join(directory, '.omc', 'handoffs', 'sess-1-launch.json');
@@ -104,6 +106,7 @@ describe('executeSpawnNext', () => {
   it('does nothing when the route misses', () => {
     const { spawnFn, calls } = spawnRecording();
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'spawn-next-'));
+    execFileSync('git', ['init', '--quiet'], { cwd: directory, stdio: 'ignore' });
     try {
       executeSpawnNext({ ...chain, outcome: 'failed' as const }, directory, spawnFn);
       expect(fs.existsSync(path.join(directory, '.omc'))).toBe(false);
@@ -135,6 +138,7 @@ describe('executeSpawnNext', () => {
       return { unref() {} };
     };
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'spawn-next-'));
+    execFileSync('git', ['init', '--quiet'], { cwd: directory, stdio: 'ignore' });
     try {
       expect(() => executeSpawnNext(chain, directory, failingSpawn)).toThrow('spawn-failure');
       const ghCalls = calls.filter(([command]) => command === 'gh');
