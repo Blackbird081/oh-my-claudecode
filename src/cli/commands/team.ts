@@ -16,7 +16,7 @@ import {
 } from '../../team/api-interop.js';
 import { inferDelegationPlanForTeamTask } from '../../team/delegation-evidence.js';
 import type { CliAgentType } from '../../team/model-contract.js';
-import type { TeamTaskDelegationPlan } from '../../team/types.js';
+import { isValidTeamInstanceId, type TeamTaskDelegationPlan } from '../../team/types.js';
 import { loadConfig } from '../../config/loader.js';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -24,6 +24,7 @@ import { tmuxExec } from '../tmux-utils.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
+const RESERVED_TEAM_SUBCOMMANDS = new Set(['list', 'ls', 'resume', 'logs', 'attach']);
 const MIN_WORKER_COUNT = 1;
 const MAX_WORKER_COUNT = 20;
 const VALID_TEAM_CLI_AGENT_TYPES = new Set(['claude', 'codex', 'gemini', 'grok', 'cursor', 'antigravity']);
@@ -31,6 +32,7 @@ const DEFAULT_TEAM_CLI_AGENT_TYPE: CliAgentType = 'claude';
 
 const TEAM_HELP = `
 Usage: omc team [N:agent-type[:role]] [--new-window] [--auto-merge] [--no-decompose] "<task description>"
+       omc team [N:agent-type[:role]] --task "<task description>"
        omc team status <team-name>
        omc team shutdown <team-name> [--force]
        omc team api <operation> [--input <json>] [--json]
@@ -38,6 +40,7 @@ Usage: omc team [N:agent-type[:role]] [--new-window] [--auto-merge] [--no-decomp
 
 Examples:
   omc team 3:claude "fix failing tests"
+  omc team --task "review auth flow"
   omc team 2:codex:architect "design auth system"
   omc team 1:gemini:executor "implement feature"
   omc team 1:codex,1:gemini "compare approaches"
@@ -48,6 +51,8 @@ Examples:
   omc team shutdown fix-failing-tests
   omc team api send-message --input '{"team_name":"my-team","from_worker":"worker-1","to_worker":"leader-fixed","body":"ACK"}' --json
 
+Without a worker spec, quote a multi-word positional task as one shell argument. Use --task for single-word tasks.
+
 Worktrees (opt-in): set team.ops.worktreeMode or OMC_TEAM_WORKTREE_MODE=detached|branch to launch workers from .omc/team/<team>/worktrees/<worker>. Status includes workspace/worktree metadata.
 
 Auto-merge (v2-only):
@@ -57,6 +62,16 @@ Auto-merge (v2-only):
                         Bursts of rapid worker commits coalesce to a single merge of HEAD.
                         Requires OMC_RUNTIME_V2=1. Leader branch must not be 'main' or 'master'.
                         Equivalent to OMC_TEAMS_AUTO_MERGE=1.
+
+Runtime safety:
+  Instance-bound team startup and shutdown require runtime v2. Setting
+  OMC_RUNTIME_V2=0|false|no|off is rejected before any native effects.
+  This command reports only the tmux runtime-v2 outcome. An implicit team
+  finishing does not make it succeed, and it does not finish an implicit team.
+  --force skips the task-status gate and graceful waits; it does not bypass ownership or cleanup verification.
+  Unverified worker/provider cleanup preserves worktrees and team state. Errors report the outcome and reason/detail; preserved outcomes name affected workers.
+  Some failures also write details to stderr.
+  Retained paths need later operator or janitor cleanup.
 
 Roles (optional): architect, executor, planner, analyst, critic, debugger, verifier,
   code-reviewer, security-reviewer, test-engineer, designer, writer, scientist
@@ -396,13 +411,15 @@ export function parseTeamArgs(tokens: string[], defaultAgentType: string = 'clau
   let newWindow = false;
   let autoMerge: boolean = process.env.OMC_TEAMS_AUTO_MERGE === '1';
   let noDecompose = false;
+  let taskFromFlag: string | undefined;
   const normalizedDefaultAgentType = VALID_TEAM_CLI_AGENT_TYPES.has(defaultAgentType as CliAgentType)
     ? defaultAgentType
     : DEFAULT_TEAM_CLI_AGENT_TYPE;
 
   // Extract supported flags before parsing positional args
   const filteredArgs: string[] = [];
-  for (const arg of args) {
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index];
     if (arg === '--json') {
       json = true;
     } else if (arg === '--new-window') {
@@ -411,6 +428,11 @@ export function parseTeamArgs(tokens: string[], defaultAgentType: string = 'clau
       autoMerge = true;
     } else if (arg === '--no-decompose' || arg === '--fixed-workers' || arg === '--preformed-plan') {
       noDecompose = true;
+    } else if (arg === '--task') {
+      if (taskFromFlag !== undefined || args[index + 1] === undefined) {
+        throw new Error('Usage: omc team [N:agent-type[:role]] --task "<task description>"');
+      }
+      taskFromFlag = args[++index];
     } else {
       filteredArgs.push(arg);
     }
@@ -490,9 +512,24 @@ export function parseTeamArgs(tokens: string[], defaultAgentType: string = 'clau
     workerSpecs = Array.from({ length: workerCount }, () => ({ agentType: normalizedDefaultAgentType }));
   }
 
-  const task = filteredArgs.join(' ').trim();
+  let task: string;
+  if (taskFromFlag !== undefined) {
+    if (filteredArgs.length > 0) {
+      throw new Error('Usage: omc team [N:agent-type[:role]] --task "<task description>"');
+    }
+    task = taskFromFlag.trim();
+  } else {
+    const positionalTask = filteredArgs[0] || '';
+    if (!explicitWorkerSpec && filteredArgs.length === 1 && !/\s/.test(positionalTask)) {
+      throw new Error(
+        'Usage: omc team [N:agent-type[:role]] "<task description>" (or use --task "<task description>")',
+      );
+    }
+    task = filteredArgs.join(' ').trim();
+  }
+
   if (!task) {
-    throw new Error('Usage: omc team [N:agent-type] "<task description>"');
+    throw new Error('Usage: omc team [N:agent-type[:role]] "<task description>" (or use --task "<task description>")');
   }
 
   const teamName = slugifyTask(task);
@@ -709,7 +746,32 @@ function parseTeamApiArgs(args: string[]): {
 // Team start (spawns tmux workers)
 // ---------------------------------------------------------------------------
 
+async function collectStartRolePromptOptions(parsed: ParsedTeamArgs): Promise<{
+  roleName?: string;
+  rolePrompt?: string;
+  rolePromptByRole?: Record<string, string>;
+}> {
+  const rolePromptByRole: Record<string, string> = {};
+  const roles = parsed.workerSpecs.flatMap((spec) => spec.role ? [spec.role] : []);
+  if (roles.length === 0) return {};
+  const { loadAgentPrompt } = await import('../../agents/utils.js');
+  for (const role of roles) {
+    if (Object.hasOwn(rolePromptByRole, role)) continue;
+    rolePromptByRole[role] = loadAgentPrompt(role);
+  }
+  return {
+    ...(parsed.role ? { roleName: parsed.role, rolePrompt: rolePromptByRole[parsed.role] } : {}),
+    rolePromptByRole,
+  };
+}
+
 async function handleTeamStart(parsed: ParsedTeamArgs, cwd: string): Promise<void> {
+  const { isRuntimeV2Enabled, startTeamV2, monitorTeamV2 } = await import('../../team/runtime-v2.js');
+  if (!isRuntimeV2Enabled()) {
+    throw new Error(
+      'team_start_unsafe_runtime_v1: instance-bound provider cleanup requires runtime v2; set OMC_RUNTIME_V2=1',
+    );
+  }
   await assertTeamSpawnAllowed(cwd);
 
   // Decompose the task string into subtasks when possible
@@ -725,94 +787,60 @@ async function handleTeamStart(parsed: ParsedTeamArgs, cwd: string): Promise<voi
   const tasks = buildTeamLaunchTasks(parsed, decomposition, effectiveWorkerCount);
   const launchTeamName = resolveAvailableTeamName(parsed.teamName, cwd);
 
-  // Load role prompt if a role was specified (e.g., 3:codex:architect)
-  let rolePrompt: string | undefined;
-  if (parsed.role) {
-    const { loadAgentPrompt } = await import('../../agents/utils.js');
-    rolePrompt = loadAgentPrompt(parsed.role);
-  }
+  const rolePromptOptions = await collectStartRolePromptOptions(parsed);
 
-  // Use v2 runtime by default (OMC_RUNTIME_V2 opt-out), otherwise fall back to v1
-  const { isRuntimeV2Enabled } = await import('../../team/runtime-v2.js');
-  if (isRuntimeV2Enabled()) {
-    const { startTeamV2, monitorTeamV2 } = await import('../../team/runtime-v2.js');
-    const runtime = await startTeamV2({
-      teamName: launchTeamName,
-      workerCount: effectiveWorkerCount,
-      agentTypes: parsed.agentTypes.slice(0, effectiveWorkerCount),
-      tasks,
-      cwd,
-      newWindow: parsed.newWindow,
-      workerRoles: parsed.workerSpecs.map((spec) => spec.role ?? spec.agentType),
-      ...(rolePrompt ? { roleName: parsed.role, rolePrompt } : {}),
-      ...(parsed.autoMerge ? { autoMerge: true } : {}),
-    });
-
-    const uniqueTypes = [...new Set(parsed.agentTypes)].join(',');
-
-    if (parsed.json) {
-      const snapshot = await monitorTeamV2(runtime.teamName, cwd);
-      console.log(JSON.stringify({
-        teamName: runtime.teamName,
-        sessionName: runtime.sessionName,
-        workerCount: runtime.config.worker_count,
-        agentType: uniqueTypes,
-        tasks: snapshot ? snapshot.tasks : null,
-      }));
-      return;
-    }
-
-    console.log(`Team started: ${runtime.teamName}`);
-    console.log(`tmux session: ${runtime.sessionName}`);
-    console.log(`workers: ${runtime.config.worker_count}`);
-    console.log(`agent_type: ${uniqueTypes}`);
-
-    const snapshot = await monitorTeamV2(runtime.teamName, cwd);
-    if (snapshot) {
-      console.log(`tasks: total=${snapshot.tasks.total} pending=${snapshot.tasks.pending} in_progress=${snapshot.tasks.in_progress} completed=${snapshot.tasks.completed} failed=${snapshot.tasks.failed}`);
-    }
-    return;
-  }
-
-  // v1 fallback
-  const { startTeam, monitorTeam } = await import('../../team/runtime.js');
-  const runtime = await startTeam({
+  const runtime = await startTeamV2({
     teamName: launchTeamName,
     workerCount: effectiveWorkerCount,
-    agentTypes: parsed.agentTypes.slice(0, effectiveWorkerCount) as CliAgentType[],
+    agentTypes: parsed.agentTypes.slice(0, effectiveWorkerCount),
     tasks,
     cwd,
     newWindow: parsed.newWindow,
+    workerRoles: parsed.workerSpecs.map((spec) => spec.role ?? spec.agentType),
+    ...rolePromptOptions,
+    ...(parsed.autoMerge ? { autoMerge: true } : {}),
   });
 
-  const uniqueTypesV1 = [...new Set(parsed.agentTypes)].join(',');
+  const uniqueTypes = [...new Set(parsed.agentTypes)].join(',');
+  const startupFailures = runtime.startupFailures ?? [];
+  const ok = startupFailures.length === 0;
+  if (!ok) process.exitCode = 1;
+  const snapshot = await monitorTeamV2(runtime.teamName, cwd, runtime.instanceId);
 
   if (parsed.json) {
-    const snapshot = await monitorTeam(runtime.teamName, cwd, runtime.workerPaneIds);
     console.log(JSON.stringify({
       teamName: runtime.teamName,
       sessionName: runtime.sessionName,
-      workerCount: runtime.workerNames.length,
-      agentType: uniqueTypesV1,
-      tasks: snapshot ? {
-        total: snapshot.taskCounts.pending + snapshot.taskCounts.inProgress + snapshot.taskCounts.completed + snapshot.taskCounts.failed,
-        pending: snapshot.taskCounts.pending,
-        in_progress: snapshot.taskCounts.inProgress,
-        completed: snapshot.taskCounts.completed,
-        failed: snapshot.taskCounts.failed,
-      } : null,
+      instanceId: runtime.instanceId,
+      workerCount: runtime.config.worker_count,
+      agentType: uniqueTypes,
+      tasks: snapshot ? snapshot.tasks : null,
+      ok,
+      startupFailures,
     }));
+    return;
+  }
+
+  if (!ok) {
+    console.error(`Team start incomplete: ${runtime.teamName}`);
+    console.error(`tmux session: ${runtime.sessionName}`);
+    console.error(`instance id: ${runtime.instanceId}`);
+    console.error(`workers: ${runtime.config.worker_count}`);
+    console.error(`agent_type: ${uniqueTypes}`);
+    for (const failure of startupFailures) {
+      const claimError = failure.claimError ? ` claim_error=${failure.claimError}` : '';
+      console.error(`startup_failure worker=${failure.worker} reason=${failure.reason}${claimError}`);
+    }
     return;
   }
 
   console.log(`Team started: ${runtime.teamName}`);
   console.log(`tmux session: ${runtime.sessionName}`);
-  console.log(`workers: ${runtime.workerNames.length}`);
-  console.log(`agent_type: ${uniqueTypesV1}`);
-
-  const snapshot = await monitorTeam(runtime.teamName, cwd, runtime.workerPaneIds);
+  console.log(`instance id: ${runtime.instanceId}`);
+  console.log(`workers: ${runtime.config.worker_count}`);
+  console.log(`agent_type: ${uniqueTypes}`);
   if (snapshot) {
-    console.log(`tasks: total=${snapshot.taskCounts.pending + snapshot.taskCounts.inProgress + snapshot.taskCounts.completed + snapshot.taskCounts.failed} pending=${snapshot.taskCounts.pending} in_progress=${snapshot.taskCounts.inProgress} completed=${snapshot.taskCounts.completed} failed=${snapshot.taskCounts.failed}`);
+    console.log(`tasks: total=${snapshot.tasks.total} pending=${snapshot.tasks.pending} in_progress=${snapshot.tasks.in_progress} completed=${snapshot.tasks.completed} failed=${snapshot.tasks.failed}`);
   }
 }
 
@@ -849,7 +877,7 @@ async function handleTeamStatus(teamName: string, cwd: string): Promise<void> {
     const latestLeaderNudge = (await readTeamEventsByType(teamName, 'team_leader_nudge', cwd)).at(-1);
     const { readTeamConfig } = await import('../../team/monitor.js');
     const config = await readTeamConfig(teamName, cwd);
-    console.log(`team=${snapshot.teamName} phase=${snapshot.phase}`);
+    console.log(`team=${snapshot.teamName} instance_id=${config?.instance_id ?? 'n/a'} phase=${snapshot.phase}`);
     console.log(`workspace_mode=${config?.workspace_mode ?? 'single'} worktree_mode=${config?.worktree_mode ?? 'disabled'} team_state_root=${config?.team_state_root ?? 'n/a'}`);
     console.log(`workers: total=${snapshot.workers.length}`);
     for (const worker of config?.workers ?? []) {
@@ -866,7 +894,7 @@ async function handleTeamStatus(teamName: string, cwd: string): Promise<void> {
     return;
   }
 
-  // v1 fallback
+  // Legacy status observation is read-only; startup and destruction are v2-only.
   const { monitorTeam } = await import('../../team/runtime.js');
   const snapshot = await monitorTeam(teamName, cwd, []);
   if (!snapshot) {
@@ -882,19 +910,24 @@ async function handleTeamStatus(teamName: string, cwd: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function handleTeamShutdown(teamName: string, cwd: string, force: boolean): Promise<void> {
-  const { isRuntimeV2Enabled } = await import('../../team/runtime-v2.js');
-  if (isRuntimeV2Enabled()) {
-    const { shutdownTeamV2 } = await import('../../team/runtime-v2.js');
-    const shutdown = await shutdownTeamV2(teamName, cwd, { force });
-    if (shutdown.outcome !== 'cleaned') throw new Error(`Team shutdown ${shutdown.outcome}: ${shutdown.reason}`);
-    console.log(`Team shutdown complete: ${teamName}`);
-    return;
+  const { readTeamConfig } = await import('../../team/monitor.js');
+  const { shutdownTeamV2 } = await import('../../team/runtime-v2.js');
+  const config = await readTeamConfig(teamName, cwd);
+  const instanceId = config?.instance_id;
+  if (!instanceId || !isValidTeamInstanceId(instanceId)) {
+    throw new Error('team_shutdown_instance_identity_missing');
   }
-
-  // v1 fallback
-  const { shutdownTeam } = await import('../../team/runtime.js');
-  const cleaned = await shutdownTeam(teamName, `omc-team-${teamName}`, cwd);
-  if (!cleaned) throw new Error(`Team shutdown failed: cleanup unverified for ${teamName}`);
+  const shutdown = await shutdownTeamV2(teamName, cwd, {
+    instanceId,
+    force,
+    timeoutMs: force ? 0 : 30_000,
+  });
+  if (shutdown.outcome !== 'cleaned') {
+    const detail = shutdown.outcome === 'preserved'
+      ? `${shutdown.reason}:${shutdown.workers.join(',')}`
+      : `${shutdown.reason}:${shutdown.detail}`;
+    throw new Error(`Team shutdown ${shutdown.outcome}: ${detail}`);
+  }
   console.log(`Team shutdown complete: ${teamName}`);
 }
 
@@ -997,6 +1030,18 @@ export async function teamCommand(args: string[]): Promise<void> {
   // omc team api <operation> ...
   if (subcommand === 'api') {
     await handleTeamApi(args.slice(1), cwd);
+    return;
+  }
+
+  if (args.slice(1).some((arg) => arg === '--help' || arg === '-h')) {
+    console.log(TEAM_HELP.trim());
+    return;
+  }
+
+  if (RESERVED_TEAM_SUBCOMMANDS.has(subcommand)) {
+    console.error(`Unsupported team command "${subcommand}".`);
+    console.log(TEAM_HELP.trim());
+    process.exitCode = 1;
     return;
   }
 

@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
+import { existsSync } from 'fs';
 import { mkdtemp, rm, mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -39,6 +40,11 @@ describe('teamCommand help output', () => {
   it('prints team help for --help', async () => {
     const logs = await captureLog(() => teamCommand(['--help']));
     expect(logs[0]).toContain('omc team api <operation>');
+    expect(logs[0]).toContain('--force skips the task-status gate and graceful waits');
+    expect(logs[0]).toContain('Unverified worker/provider cleanup preserves worktrees and team state');
+    expect(logs[0]).toContain('Errors report the outcome and reason/detail');
+    expect(logs[0]).toContain('preserved outcomes name affected workers');
+    expect(logs[0]).toContain('Some failures also write details to stderr');
   });
 
   it('prints team help for help alias', async () => {
@@ -214,6 +220,32 @@ describe('teamCommand api operations', () => {
     }
   });
 
+  it('rejects the legacy runtime before creating native team state', async () => {
+    wd = await mkdtemp(join(tmpdir(), 'omc-team-cli-v1-rejected-'));
+    isolateFixtureHome(wd);
+    previousCwd = process.cwd();
+    process.chdir(wd);
+    const previousRuntimeFlag = process.env.OMC_RUNTIME_V2;
+    const errors: string[] = [];
+    const originalError = console.error;
+    try {
+      process.env.OMC_RUNTIME_V2 = '0';
+      console.error = (...args: unknown[]) => errors.push(args.map(String).join(' '));
+
+      await teamCommand(['1:codex', 'do work']);
+
+      expect(errors.join('\n')).toContain('team_start_unsafe_runtime_v1');
+      expect(errors.join('\n')).toContain('OMC_RUNTIME_V2=1');
+      expect(existsSync(join(wd, '.omc', 'state', 'team'))).toBe(false);
+      expect(process.exitCode).toBe(1);
+    } finally {
+      console.error = originalError;
+      if (previousRuntimeFlag === undefined) delete process.env.OMC_RUNTIME_V2;
+      else process.env.OMC_RUNTIME_V2 = previousRuntimeFlag;
+      process.exitCode = 0;
+    }
+  });
+
   it('reports malformed worker specs without dumping generic team usage', async () => {
     const errors: string[] = [];
     const originalError = console.error;
@@ -299,6 +331,36 @@ describe('teamCommand api operations', () => {
     } finally {
       process.env.OMC_TEAM_WORKER = previousWorker;
     }
+  });
+});
+
+describe('parseTeamArgs explicit task syntax', () => {
+  it('accepts a quoted positional task with the configured default workers', () => {
+    const parsed = parseTeamArgs(['review auth flow']);
+
+    expect(parsed.task).toBe('review auth flow');
+    expect(parsed.workerCount).toBe(3);
+    expect(parsed.explicitWorkerSpec).toBe(false);
+  });
+
+  it('accepts --task for a single-word task without a worker spec', () => {
+    const parsed = parseTeamArgs(['--task', 'list']);
+
+    expect(parsed.task).toBe('list');
+    expect(parsed.workerCount).toBe(3);
+    expect(parsed.explicitWorkerSpec).toBe(false);
+  });
+
+  it('rejects a single bare word without --task or an explicit worker spec', () => {
+    expect(() => parseTeamArgs(['unknown-word'])).toThrow(/Usage: omc team/);
+  });
+
+  it('joins an unquoted multi-token task without a worker spec', () => {
+    const parsed = parseTeamArgs(['fix', 'the', 'login', 'bug']);
+
+    expect(parsed.task).toBe('fix the login bug');
+    expect(parsed.workerCount).toBe(3);
+    expect(parsed.explicitWorkerSpec).toBe(false);
   });
 });
 
@@ -460,7 +522,7 @@ describe('parseTeamArgs comma-separated multi-type specs', () => {
   });
 
   it('trims slugs after length clipping and suffixes stale launch state', async () => {
-    const parsed = parseTeamArgs(['abcdefghijklmnopqrstuvwxyz abc', 'task body']);
+    const parsed = parseTeamArgs(['--task', 'abcdefghijklmnopqrstuvwxyz abc task body']);
     expect(parsed.teamName.endsWith('-')).toBe(false);
 
     const slugWd = await mkdtemp(join(tmpdir(), 'omc-team-slug-'));

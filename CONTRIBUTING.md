@@ -37,7 +37,7 @@ This guide assumes you're comfortable with terminal commands and git branching.
    # origin    https://github.com/<your-username>/oh-my-claudecode.git (fetch)
    # origin    https://github.com/<your-username>/oh-my-claudecode.git (push)
    # upstream  https://github.com/Yeachan-Heo/oh-my-claudecode.git (fetch)
-   # upstream  https://github.com/Yeachan-Heo/oh-my-claudecode.git (read-only)
+   # upstream  https://github.com/Yeachan-Heo/oh-my-claudecode.git (push)
    ```
 
 5. **Check available branches**:
@@ -83,6 +83,11 @@ Note: The repo has two main branches:
    ```
 
 All TypeScript and bundling steps are handled. The output goes to `dist/` and `bridge/`.
+
+On macOS, the graph filesystem backend also requires clang and Node development
+headers and produces ignored binaries in `native/`. See
+[Graph contained filesystem](docs/graph-contained-filesystem.md) for header
+configuration, packaging, and the real-host acceptance checks.
 
 ---
 
@@ -130,6 +135,11 @@ This tells Claude Code to ignore the repo's `.mcp.json` entry and use the plugin
 ```bash
 /autopilot "your task here"
 ```
+
+**Quick verification**: if Claude Code starts without OMC agents or the bridge MCP, run
+`omc doctor conflicts` first. A missing `disabledMcpjsonServers` entry usually shows up as a duplicate
+`"t"` MCP server, while a stale checkout setup is fixed by re-running `omc setup --plugin-dir-mode`
+from the repository root.
 
 **Rebuilding**: After code changes:
 ```bash

@@ -427,7 +427,7 @@ describe('Contract 5: no hardcoded ~/.claude in LLM-consumed artifacts', () => {
   });
 });
 
-// ── Contract 9: hooks/hooks.json commands use $CLAUDE_PLUGIN_ROOT, no absolute paths ──
+// ── Contract 9: hooks/hooks.json commands use ${CLAUDE_PLUGIN_ROOT}, no absolute paths ──
 // Issue #2348 — plugin hook delivery must be portable
 
 describe('Contract 9: hooks/hooks.json portability', () => {
@@ -437,7 +437,7 @@ describe('Contract 9: hooks/hooks.json portability', () => {
   // restore hooks/hooks.json from git here: hook portability hotfixes intentionally
   // change that source file, and a checkout would hide the working-tree contract.
 
-  it('all hook commands reference $CLAUDE_PLUGIN_ROOT', () => {
+  it('all hook commands reference ${CLAUDE_PLUGIN_ROOT}', () => {
     if (!existsSync(HOOKS_JSON_PATH)) return;
 
     const hooksJson = JSON.parse(readFileSync(HOOKS_JSON_PATH, 'utf-8'));
@@ -447,7 +447,7 @@ describe('Contract 9: hooks/hooks.json portability', () => {
       for (const hookGroup of eventHooks as Array<{ hooks: Array<{ type: string; command: string }> }>) {
         for (const hook of hookGroup.hooks) {
           if (hook.type !== 'command') continue;
-          if (!hook.command.includes('$CLAUDE_PLUGIN_ROOT')) {
+          if (!hook.command.includes('${CLAUDE_PLUGIN_ROOT}')) {
             violations.push({ event: eventType, command: hook.command });
           }
         }
@@ -457,8 +457,8 @@ describe('Contract 9: hooks/hooks.json portability', () => {
     if (violations.length > 0) {
       const details = violations.map(v => `  ${v.event}: ${v.command}`).join('\n');
       expect.fail(
-        `Found hook commands not using $CLAUDE_PLUGIN_ROOT:\n${details}\n\n` +
-        `All plugin hook commands must reference $CLAUDE_PLUGIN_ROOT for portability.`
+        `Found hook commands not using \${CLAUDE_PLUGIN_ROOT}:\n${details}\n\n` +
+        `All plugin hook commands must reference \${CLAUDE_PLUGIN_ROOT} for portability.`
       );
     }
   });
@@ -501,7 +501,7 @@ describe('Contract 9: hooks/hooks.json portability', () => {
       for (const hookGroup of eventHooks as Array<{ hooks: Array<{ type: string; command: string }> }>) {
         for (const hook of hookGroup.hooks) {
           if (hook.type !== 'command') continue;
-          if (!hook.command.startsWith('node "$CLAUDE_PLUGIN_ROOT"/scripts/run.cjs ')) {
+          if (!hook.command.startsWith('node "${CLAUDE_PLUGIN_ROOT}"/scripts/run.cjs ')) {
             violations.push({ event: eventType, command: hook.command, reason: 'not direct node run.cjs' });
           }
           if (/^(?:"\/bin\/sh"|sh)\s/.test(hook.command) || hook.command.includes('find-node.sh')) {
@@ -515,7 +515,7 @@ describe('Contract 9: hooks/hooks.json portability', () => {
       const details = violations.map(v => `  ${v.event} (${v.reason}): ${v.command}`).join('\n');
       expect.fail(
         `Found non-Windows-safe source hook commands in hooks.json:\n${details}\n\n` +
-        `Source plugin manifest commands must be direct: node "$CLAUDE_PLUGIN_ROOT"/scripts/run.cjs ...`
+        `Source plugin manifest commands must be direct: node "\${CLAUDE_PLUGIN_ROOT}"/scripts/run.cjs ...`
       );
     }
   });
@@ -570,10 +570,17 @@ describe('Contract 10: installer manages stale OMC-created agents and skills', (
   });
 
   it('syncBundledSkillDefinitions overwrites existing OMC skills (force copy)', () => {
-    // The installer uses cpSync with { force: true } which overwrites stale versions
-    // Verify this by checking the source code pattern
+    // Existing real directories keep force-copy behavior, while unsafe collisions
+    // are rejected before the copy and marker write.
     const installerSource = readFileSync(join(REPO_ROOT, 'src', 'installer', 'index.ts'), 'utf-8');
-    expect(installerSource).toContain('cpSync(sourceDir, targetDir, { recursive: true, force: true })');
+    const targetCheck = installerSource.indexOf('targetStat = lstatSync(targetDir)');
+    const collisionGuard = installerSource.indexOf('targetStat.isSymbolicLink() || !targetStat.isDirectory()');
+    const forceCopy = installerSource.indexOf('cpSync(sourceDir, targetDir, { recursive: true, force: true })');
+    const markerWrite = installerSource.indexOf('markSkillAsOmcManaged(targetDir)');
+    expect(targetCheck).toBeGreaterThanOrEqual(0);
+    expect(collisionGuard).toBeGreaterThan(targetCheck);
+    expect(forceCopy).toBeGreaterThan(collisionGuard);
+    expect(markerWrite).toBeGreaterThan(collisionGuard);
   });
 
   it('install() overwrites existing agent files when force option is used', () => {
@@ -667,8 +674,8 @@ describe('Contract 11: SessionEnd hooks are async (issue #3240)', () => {
       .filter(hook => hook.type === 'command')
       .map(hook => hook.command);
 
-    expect(commands).toContain('node "$CLAUDE_PLUGIN_ROOT"/scripts/run.cjs "$CLAUDE_PLUGIN_ROOT"/scripts/session-end.mjs');
-    expect(commands).toContain('node "$CLAUDE_PLUGIN_ROOT"/scripts/run.cjs "$CLAUDE_PLUGIN_ROOT"/scripts/wiki-session-end.mjs');
+    expect(commands).toContain('node "${CLAUDE_PLUGIN_ROOT}"/scripts/run.cjs "${CLAUDE_PLUGIN_ROOT}"/scripts/session-end.mjs');
+    expect(commands).toContain('node "${CLAUDE_PLUGIN_ROOT}"/scripts/run.cjs "${CLAUDE_PLUGIN_ROOT}"/scripts/wiki-session-end.mjs');
   });
 
   it('non-SessionEnd hooks do not unconditionally carry async:true', () => {

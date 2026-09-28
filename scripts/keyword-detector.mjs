@@ -26,10 +26,11 @@ import { join, dirname, isAbsolute } from 'path';
 import { homedir } from 'os';
 import { fileURLToPath } from 'url';
 import { getClaudeConfigDir } from './lib/config-dir.mjs';
-import { atomicWriteFileSync, recoverEmergencyStateFile, withStateFileLockSync } from './lib/atomic-write.mjs';
+import { atomicWriteFileSync, getStateFileLockFailureMessage, recoverEmergencyStateFile, withStateFileLockSync } from './lib/atomic-write.mjs';
 import { readStdin } from './lib/stdin.mjs';
 import { resolveOmcStateRoot, resolveSessionStatePathsForHook } from './lib/state-root.mjs';
 import { parseWorkflowInvocation, selectWorkflowProfile, createWorkflowState, isValidWorkflowTrackingState, isWorkflowRuntimeSupported, resolveWorkflowStagePrompt, takeWorkflowTranscriptFailure } from './lib/workflow-profile-runtime.mjs';
+import { isJevShadowOptedIn, recordJevShadow } from './lib/jev-shadow.mjs';
 
 // Resolve OMC package root: CLAUDE_PLUGIN_ROOT (plugin system) or derive from this script's location
 const _omcRoot = process.env.CLAUDE_PLUGIN_ROOT ||
@@ -151,6 +152,7 @@ ANALYSIS MODE. Gather context before diving deep:
 const TDD_MESSAGE = `<tdd-mode>
 [TDD MODE ACTIVATED]
 Write or update tests first when practical, confirm they fail for the right reason, then implement the minimal fix and re-run verification.
+Call the Skill tool with "tdd" for the full discipline at pre-agreed seams.
 </tdd-mode>
 
 ---
@@ -1054,7 +1056,7 @@ async function activateState(directory, prompt, stateName, sessionId) {
   try {
     mkdirSync(dirname(writePath), { recursive: true });
     let workflowIntegrityFailure = false;
-    withStateFileLockSync(writePath, () => {
+    const locked = withStateFileLockSync(writePath, () => {
       if (!recoverEmergencyStateFile(writePath)) return;
       // A legacy autopilot activation must never replace named state. Own
       // markers are authoritative even when their values are falsy.
@@ -1072,13 +1074,14 @@ async function activateState(directory, prompt, stateName, sessionId) {
       }
       atomicWriteFileSync(writePath, JSON.stringify(state, null, 2));
     });
+    if (!locked.acquired) return getStateFileLockFailureMessage();
     return workflowIntegrityFailure ? 'workflow_descriptor_integrity_failed' : null;
   } catch { return null; }
 }
 
 function retireStaleWorkflowCancelSignal(statePath, workflowRunId) {
   const signalPath = join(dirname(statePath), 'cancel-signal-state.json');
-  withStateFileLockSync(signalPath, () => {
+  const locked = withStateFileLockSync(signalPath, () => {
     if (!existsSync(signalPath)) return;
     try {
       const signal = JSON.parse(readFileSync(signalPath, 'utf8'));
@@ -1087,6 +1090,8 @@ function retireStaleWorkflowCancelSignal(statePath, workflowRunId) {
       // Malformed signals fail closed in Stop and are left for explicit cleanup.
     }
   });
+  if (!locked.acquired) return getStateFileLockFailureMessage();
+  return null;
 }
 
 function resumeWorkflowProfile(directory, sessionId, workflowName, omcRoot) {
@@ -1117,7 +1122,8 @@ function resumeWorkflowProfile(directory, sessionId, workflowName, omcRoot) {
     if (result.value?.error === 'workflow_transcript_record_too_large') throw new Error('workflow_transcript_record_too_large');
     if (result.value?.error) throw new Error('workflow_descriptor_integrity_failed');
     if (!result.acquired || !result.value?.stagePrompt) return null;
-    retireStaleWorkflowCancelSignal(target, result.value.workflowRunId);
+    const cleanupFailure = retireStaleWorkflowCancelSignal(target, result.value.workflowRunId);
+    if (cleanupFailure) process.stderr.write(`[OMC] ${cleanupFailure}\n`);
     return result.value.stagePrompt;
   } catch (error) {
     if (error?.message === 'workflow_emergency_recovery_failed' || error?.message === 'workflow_transcript_record_too_large') throw error;
@@ -1173,7 +1179,8 @@ function activateWorkflowProfile(directory, sessionId, task, workflow, omcRoot, 
     if (result.acquired && result.value?.error === 'workflow_integrity_failure') throw new Error('workflow_descriptor_integrity_failed');
     if (result.acquired && result.value?.error === 'workflow_recovery_failure') throw new Error('workflow_emergency_recovery_failed');
     if (!result.acquired || !result.value || typeof result.value.stagePrompt !== 'string') return null;
-    retireStaleWorkflowCancelSignal(target, result.value.workflowRunId);
+    const cleanupFailure = retireStaleWorkflowCancelSignal(target, result.value.workflowRunId);
+    if (cleanupFailure) process.stderr.write(`[OMC] ${cleanupFailure}\n`);
     return result.value.stagePrompt;
   } catch (error) {
     if (error?.message === 'workflow_emergency_recovery_failed' || error?.message === 'workflow_transcript_record_too_large') throw error;
@@ -1196,20 +1203,25 @@ function activateRalplanStartupState(directory, prompt, sessionId, omcRoot) {
     last_checked_at: now
   };
 
+  const persist = statePath => {
+    try {
+      mkdirSync(dirname(statePath), { recursive: true });
+      const locked = withStateFileLockSync(statePath, () => {
+        atomicWriteFileSync(statePath, JSON.stringify(state, null, 2));
+      });
+      return locked.acquired ? null : getStateFileLockFailureMessage();
+    } catch {
+      return 'Could not persist ralplan state.';
+    }
+  };
+
   if (sessionId && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId)) {
     const sessionDir = join(_omcRoot, 'state', 'sessions', sessionId);
-    if (!existsSync(sessionDir)) {
-      try { mkdirSync(sessionDir, { recursive: true }); } catch {}
-    }
-    try { atomicWriteFileSync(join(sessionDir, 'ralplan-state.json'), JSON.stringify(state, null, 2)); } catch {}
-    return;
+    return persist(join(sessionDir, 'ralplan-state.json'));
   }
 
   const localDir = join(_omcRoot, 'state');
-  if (!existsSync(localDir)) {
-    try { mkdirSync(localDir, { recursive: true }); } catch {}
-  }
-  try { atomicWriteFileSync(join(localDir, 'ralplan-state.json'), JSON.stringify(state, null, 2)); } catch {}
+  return persist(join(localDir, 'ralplan-state.json'));
 }
 
 
@@ -1640,6 +1652,54 @@ function createHookOutput(additionalContext) {
   };
 }
 
+const SKILL_TRIGGER_QUESTIONS = {
+  'skill-trigger': {
+    type: 'choice',
+    instructions: 'Which skill or mode should this user prompt trigger?',
+    criteria: {
+      cancel: 'The prompt explicitly invokes the cancel trigger.',
+      ralph: 'The prompt explicitly invokes the ralph trigger.',
+      autopilot: 'The prompt explicitly invokes the autopilot trigger.',
+      ralplan: 'The prompt explicitly invokes the ralplan trigger.',
+      tdd: 'The prompt explicitly invokes the tdd trigger.',
+      'code-review': 'The prompt explicitly invokes the code-review trigger.',
+      'security-review': 'The prompt explicitly invokes the security-review trigger.',
+      ultrathink: 'The prompt explicitly invokes the ultrathink trigger.',
+      deepsearch: 'The prompt explicitly invokes the deepsearch trigger.',
+      analyze: 'The prompt explicitly invokes the analyze trigger.',
+      'deep-interview': 'The prompt explicitly invokes the deep-interview trigger.',
+      codex: 'The prompt explicitly invokes the codex trigger.',
+      none: 'No trigger fires; handle the prompt without a mode or skill.',
+    },
+  },
+};
+
+const INTENT_QUESTIONS = {
+  intent: {
+    type: 'noul',
+    instructions:
+      'Does this user prompt start an Intent-intake request (a non-engineer contributor stating a problem/goal/constraints to start the requirements intake flow)?',
+    criteria: {
+      true: 'The prompt states a problem, goal, or constraints from a contributor and starts the Intent intake — a goal-level intent.md with problem/goal/users-and-systems/constraints/open-questions, not a solution design.',
+      false: 'Everything else: solution or engineering work, informational questions, or an existing workflow. Not an Intent-intake request.',
+    },
+  },
+};
+
+const TASK_SIZE_QUESTIONS = {
+  'task-size': {
+    type: 'choice',
+    instructions: 'What size is this task — how much orchestration does it warrant?',
+    criteria: {
+      small: 'Single-file or few-line change; run directly without heavy modes',
+      medium: 'Multi-file but single-area change; standard delegation',
+      large: 'Multi-area or architectural change; heavy orchestration (ralph/autopilot/team) is warranted',
+    },
+  },
+};
+
+const INTENT_SLASH_PATTERN = /^\s*\/(?:oh-my-claudecode:|omc:)?intent(?=\s|$|[?!.,;:])/i;
+
 // Main
 async function main() {
   // Skip guard: check OMC_SKIP_HOOKS env var (see issue #838)
@@ -1726,7 +1786,13 @@ async function main() {
     }
 
     if (isExplicitRalplanSlashInvocation(prompt)) {
-      activateRalplanStartupState(directory, prompt, sessionId, omcRoot);
+      const activationError = activateRalplanStartupState(directory, prompt, sessionId, omcRoot);
+      if (activationError) {
+        console.log(JSON.stringify(createHookOutput(
+          `[OMC STATE ERROR] ${activationError} No ralplan state was activated.`,
+        )));
+        return;
+      }
       console.log(JSON.stringify(createHookOutput(
         `[RALPLAN INIT]\n` +
         `Explicit /ralplan invoke detected during UserPromptSubmit.\n` +
@@ -1857,6 +1923,36 @@ async function main() {
     // Resolve conflicts
     const resolved = resolveConflicts(uniqueMatches);
 
+    if (isJevShadowOptedIn('skill-trigger')) {
+      recordJevShadow({
+        point: 'skill-trigger',
+        state: { prompt: cleanPrompt, source: 'user-prompt-submit' },
+        questions: SKILL_TRIGGER_QUESTIONS,
+        heuristic: resolved.map((match) => match.name),
+      });
+    }
+    if (isJevShadowOptedIn('intent')) {
+      recordJevShadow({
+        point: 'intent',
+        state: { prompt: cleanPrompt, mode_name: 'intent' },
+        questions: INTENT_QUESTIONS,
+        heuristic: INTENT_SLASH_PATTERN.test(cleanPrompt),
+      });
+    }
+    if (isJevShadowOptedIn('task-size')) {
+      try {
+        const { classifyTaskSize } = await import('../dist/hooks/task-size-detector/index.js');
+        recordJevShadow({
+          point: 'task-size',
+          state: { prompt: cleanPrompt, source: 'user-prompt-submit' },
+          questions: TASK_SIZE_QUESTIONS,
+          heuristic: classifyTaskSize(cleanPrompt),
+        });
+      } catch {
+        // The compiled twin is optional for script-only installs; never affect prompt handling.
+      }
+    }
+
     // Import flow tracer once (best-effort)
     let tracer = null;
     try { tracer = await import('../dist/hooks/subagent-tracker/flow-tracer.js'); } catch { /* silent */ }
@@ -1953,6 +2049,12 @@ async function main() {
       const activationError = await activateState(directory, prompt, mode.name, sessionId);
       if (activationError === 'workflow_descriptor_integrity_failed') {
         console.log(JSON.stringify(createHookOutput('workflow_descriptor_integrity_failed')));
+        return;
+      }
+      if (activationError) {
+        console.log(JSON.stringify(createHookOutput(
+          `[OMC STATE ERROR] ${activationError} No ${mode.name} state was activated.`,
+        )));
         return;
       }
     }

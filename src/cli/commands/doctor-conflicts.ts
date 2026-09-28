@@ -13,6 +13,20 @@ import { getSkillsDir, listBuiltinSkillNames } from '../../features/builtin-skil
 import { inspectUnifiedMcpRegistrySync } from '../../installer/mcp-registry.js';
 import { findWorkspaceRoot, WORKSPACE_MARKER } from '../../lib/worktree-paths.js';
 
+function hasActiveOmcPluginForDiagnostics(): boolean {
+  if (process.env.CLAUDE_PLUGIN_ROOT?.trim()) return true;
+  const settingsPath = join(getClaudeConfigDir(), 'settings.json');
+  if (!existsSync(settingsPath)) return false;
+  try {
+    const settings = JSON.parse(readFileSync(settingsPath, 'utf-8')) as Record<string, unknown>;
+    for (const candidate of [settings.enabledPlugins, settings.plugins]) {
+      if (Array.isArray(candidate) && candidate.some((id) => typeof id === 'string' && id.toLowerCase().includes('oh-my-claudecode'))) return true;
+      if (candidate && typeof candidate === 'object' && Object.entries(candidate as Record<string, unknown>).some(([id, value]) => id.toLowerCase().includes('oh-my-claudecode') && value !== false)) return true;
+    }
+  } catch { /* malformed settings are not proof of an active plugin */ }
+  return false;
+}
+
 export interface WorkspaceMarkerStatus {
   /** Absolute path to the directory containing .omc-workspace, or null if absent. */
   markerRoot: string | null;
@@ -460,11 +474,10 @@ function isSupportedSetupFallbackSkill(legacySkillsDir: string, entry: string, b
     return false;
   }
 
-  // scripts/setup-claude-md.sh intentionally syncs the raw bundled
-  // skills/wiki/SKILL.md file into ~/.claude/skills/wiki/SKILL.md. Keep the
-  // retired omc-reference fallback for already-installed 4.x upgrades.
-  // as a Claude CLI fallback. Suppress only that exact, unmodified sync so real
-  // legacy collisions and user-edited fallback copies still surface.
+  // setup-claude-md.sh may sync the raw bundled wiki skill as a CLI fallback.
+  // Keep the retired omc-reference fallback for already-installed 4.x upgrades.
+  // Suppress only an exact byte-for-byte copy so real legacy collisions and
+  // user-edited fallback copies still surface, even with the plugin active.
   if (entry.toLowerCase() !== baseName) {
     return false;
   }
@@ -475,8 +488,41 @@ function isSupportedSetupFallbackSkill(legacySkillsDir: string, entry: string, b
   }
 
   try {
-    const installedContent = readFileSync(installedSkillPath, 'utf-8');
+    const installedContent = readFileSync(installedSkillPath);
     return getSetupFallbackCanonicalSkillPaths(baseName).some(canonicalSkillPath => (
+      existsSync(canonicalSkillPath)
+      && installedContent.equals(readFileSync(canonicalSkillPath))
+    ));
+  } catch {
+    return false;
+  }
+}
+
+const OMC_MANAGED_SKILL_MARKER = '.omc-managed';
+
+function isVerifiedStandaloneManagedSkill(legacySkillsDir: string, entry: string, baseName: string): boolean {
+  if (hasActiveOmcPluginForDiagnostics()) {
+    return false;
+  }
+  if (entry.toLowerCase().endsWith('.md')) {
+    return false;
+  }
+
+  const skillDir = join(legacySkillsDir, entry);
+  const markerPath = join(skillDir, OMC_MANAGED_SKILL_MARKER);
+  const installedSkillPath = join(skillDir, 'SKILL.md');
+  if (!existsSync(markerPath) || !existsSync(installedSkillPath)) {
+    return false;
+  }
+
+  const canonicalNames = new Set<string>([baseName]);
+  if (baseName.startsWith('omc-')) {
+    canonicalNames.add(baseName.slice('omc-'.length));
+  }
+  const canonicalPaths = Array.from(canonicalNames).flatMap((name: string) => getSetupFallbackCanonicalSkillPaths(name));
+  try {
+    const installedContent = readFileSync(installedSkillPath, 'utf-8');
+    return canonicalPaths.some((canonicalSkillPath: string) => (
       existsSync(canonicalSkillPath)
       && installedContent === readFileSync(canonicalSkillPath, 'utf-8')
     ));
@@ -504,6 +550,9 @@ export function checkLegacySkills(): ConflictReport['legacySkills'] {
       // Match .md files or directories whose name collides with a plugin skill
       const baseName = entry.replace(/\.md$/i, '').toLowerCase();
       if (pluginSkillNames.has(baseName)) {
+        if (isVerifiedStandaloneManagedSkill(legacySkillsDir, entry, baseName)) {
+          continue;
+        }
         if (isSupportedSetupFallbackSkill(legacySkillsDir, entry, baseName)) {
           continue;
         }

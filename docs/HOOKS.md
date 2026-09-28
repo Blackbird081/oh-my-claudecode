@@ -47,7 +47,7 @@ Handle orchestration, keyword detection, and mode persistence.
 | Hook | Description |
 |------|-------------|
 | keyword-detector | Detects magic keywords and activates corresponding skills |
-| persistent-mode | Enforces continuation when an active execution mode (ralph, autopilot, ultragoal, or team) is active — injects reinforcement messages on Stop to prevent premature halting |
+| persistent-mode | Enforces continuation when an execution mode (ralph, autopilot, team, etc.) is active — injects reinforcement messages on Stop to prevent premature halting |
 
 ### Context Management Hooks
 
@@ -101,7 +101,7 @@ Fires when the user submits a prompt.
 | `keyword-detector.mjs` | Detects magic keywords and invokes the corresponding skill | 30s outer host fuse; 8s trusted Worker limit |
 | `skill-injector.mjs` | Injects skill prompts | 30s outer host fuse; 12s trusted Worker limit |
 
-Runs on all user input (`matcher: "*"`). When the keyword detector finds supported keywords such as "ralph", "autopilot", "ralplan", or "deep interview", it injects the corresponding skill invocation instruction via `additionalContext`.
+Runs on all user input (`matcher: "*"`). When the keyword detector finds keywords like "ralph" or "autopilot", it injects the corresponding skill invocation instruction via `additionalContext`. Parallel work is invoked explicitly with `/oh-my-claudecode:team` and is not auto-detected.
 
 The 30s timeout is a per-command outer host fuse that includes launcher startup before `run.cjs`. Once the runner reaches its exact trusted Worker branch, `keyword-detector.mjs` is limited to 8s and `skill-injector.mjs` to 12s; lower manifest limits are never extended. A command that never reaches `run.cjs` can consume its full 30s outer fuse. The host schedules the two commands externally, so this does not claim an aggregate prompt latency.
 
@@ -201,7 +201,7 @@ Fires when Claude finishes a response.
 |--------|------|---------|
 | `context-guard-stop.mjs` | Monitors context usage | 5s |
 | `workflow-drift-guard.mjs` | Blocks narrow structured-question and fake-completion drift | 3s |
-| `persistent-mode.mjs` | Maintains active mode state (ralph, autopilot, ultragoal, team, etc.) | 10s |
+| `persistent-mode.mjs` | Maintains active mode state (ralph, team, etc.) | 10s |
 | `code-simplifier.mjs` | Auto-simplifies modified files (opt-in) | 5s |
 
 `persistent-mode` injects a reinforcement message like "The boulder never stops" when an active execution mode is running, prompting continued work. A fresh unconfirmed ultragoal is exempt while Claude `/goal` confirmation is pending; confirmed runs remain fail-closed.
@@ -228,7 +228,7 @@ Detects magic keywords in user prompts and invokes the corresponding skill.
 
 - **Event**: UserPromptSubmit
 - **Behavior**: Sanitizes the prompt (removes code blocks, URLs, file paths) then matches keyword patterns
-- **Conflict resolution**: cancel has highest priority, then ralph > autopilot > ralplan
+- **Conflict resolution**: cancel has highest priority, then ralph > autopilot
 
 - **Safety**: Disabled inside team workers to prevent infinite spawning
 
@@ -263,17 +263,28 @@ Ambiguous-regex and malformed-ternary uncertainty is bounded to the current phys
 
 #### persistent-mode
 
-Enforces continuation when an execution mode is active. This is the hook that keeps skills like autopilot and ralph running.
+Enforces continuation when an execution mode is active. This is the hook that keeps skills like autopilot, ralph, and team running.
 
 - **Event**: Stop
-- **Behavior**: Checks `.omc/state/` for active mode state files. If any mode (ralph, ultragoal, autopilot, or team) is active, injects a reinforcement message to prevent Claude from stopping.
+- **Behavior**: Checks `.omc/state/` for active mode state files. If any current mode (ralph, ultragoal, autopilot, team) or legacy/retired state (ultrawork, pipeline) is active, injects a reinforcement message to prevent Claude from stopping.
 
 - **Reinforcement message**: "The boulder never stops" — prompts Claude to continue working
 - **Staleness check**: States older than 2 hours are treated as inactive to prevent stale state from blocking new sessions
 - **Notification**: Sends Discord/Telegram/Slack notification on first stop (if configured)
 - **Cancel**: Use `/oh-my-claudecode:cancel` to deactivate modes
 
-> **Note**: autopilot and ralph are **skills** (invoked via keyword-detector), while team and ultragoal are explicit workflow invocations. The persistent-mode hook is what enforces their continuation by blocking the Stop event.
+> **Note**: autopilot, ralph, and team are **skills** (invoked through their current skill surfaces), not hooks. Legacy/retired `ultrawork` and `pipeline` state is cleanup-only and must never be invoked or reactivated. The persistent-mode hook enforces continuation by blocking the Stop event.
+
+#### budget-guard (`budget-guard.mjs`)
+
+Enforces `OMC_RUN_BUDGET_TOKENS` for unattended sessions: when an active unattended mode (ralph, autopilot, team, ultragoal) is running and the session's token spend crosses the budget, the hook blocks the Stop event and sends the model back to finish with a resumable budget report.
+
+On a Stop re-entry (`stop_hook_active` or `stopHookActive`), it records a pass and never blocks again, avoiding a self-reinforcing loop.
+
+- **Event**: Stop
+- **Token accounting**: sums the latest usage snapshot for each assistant message in a bounded tail (2 MB) of the session transcript, including cache tokens. Repeated records are deduplicated by `message.id`, falling back to `requestId`; records without either ID are counted individually. The bounded tail can undercount a long session. A missing or unreadable transcript degrades to a logged pass; the hook never blocks on absent evidence.
+- **Rollout (tri-state, mirrors the jev off/shadow/active protocol)**: `OMC_BUDGET_ENFORCE=off` does nothing; `shadow` (default) logs judgments to `.omc/state/enforcement/shadow.jsonl` and never blocks or warns; `active` warns at 90% (system message) and blocks at 100% (exit 2, budget-report contract in the refusal).
+- **Evidence**: every judgment is appended to the shadow log (`{ts, rule, mode, outcome, detail, latencyMs}`) — the promotion evidence for moving the default from shadow to active. A rule promotes only after enough samples with zero false blocks.
 
 ### Mode State Management
 
@@ -320,7 +331,25 @@ or
 /oh-my-claudecode:cancel
 ```
 
-`cancel` removes state files for all active modes, including ralph, autopilot, ultragoal, and team, and clears legacy retired-mode artifacts when present.
+`cancel` removes state files for all active modes: ralph, autopilot, team, and any others; it also clears legacy/retired `ultrawork` state.
+
+#### Git Guardrails (`git-guardrails.mjs`)
+
+A PreToolUse hook (matcher: `Bash`) that checks shell command positions and blocks destructive Git operations from agent-driven Bash calls with an authority message. It scans commands separated by shell chains and newlines, so a destructive command is still blocked when it follows a safe command. Quoted arguments and ordinary text commands such as `echo git push` are not mistaken for Git invocations. Git's global `-C <dir>` and `-c key=value` options are recognized before the guarded subcommands.
+
+- **Enable**: Set `OMC_GIT_GUARDRAILS=1` to enable in any session. The guard also auto-enables when the canonical state resolver finds an active ralph, autopilot, team, or ultragoal state owned by the current session. If the payload has no session ID, auto-enable fails open rather than borrowing another session's legacy state. `OMC_GIT_GUARDRAILS=0` disables both activation paths; otherwise the hook fails open when no active mode is found.
+- **Blocked operations**: non-dry-run `git push`, `git reset --hard`, non-dry-run `git clean -f/--force`, forced branch deletion (`git branch -D`, `-d --force`, or `--force --delete` in either order), and `git checkout .` / `git checkout -- .` or `git restore .` (working-tree discard). The hook ignores Git option-looking arguments after `--`; those are refspecs or pathspecs, not options.
+- **Safe operations**: `git push --dry-run` / `git push -n`, clean dry-runs (`git clean -n`, including `git clean -n -- -f`), soft resets, non-forced branch deletes (`-d`), and path-specific checkout/restore commands such as `git checkout ./path` and `git restore ./file` pass. Malformed, absent, or command-less payloads fail open. An unset guard variable outside an active mode also fails open after a bounded stdin read; explicit `=0` exits before reading stdin.
+- **Message**: the hook refuses with “You do not have authority for this operation” and names the two legitimate exits — the user runs it themselves, or explicitly sets `OMC_GIT_GUARDRAILS=0`. When auto-enabled by an active mode, the refusal names the mode.
+- **Prove it bites**: before trusting the guardrail in a session, feed it a planted violation once and watch it block (see the `refit` skill's landing rule). An installed guardrail nobody has seen fire is decoration, not protection.
+
+#### Stale Run Reporter (`stale-run-reporter.mjs`)
+
+A SessionStart hook: the unattended-run **watchdog**. It scans the resolved `.omc` state root for persistent unattended-mode state files — ralph, autopilot, team, ultragoal — left `active: true` with a stale mtime (the signature of a run whose process died mid-flight), and surfaces them as advisory `[STALE RUN]` context naming the mode, approximate age, and state path.
+
+- **Threshold**: 2 hours of mtime silence (matching the persistent-mode freshness window); tunable via `OMC_STALE_RUN_HOURS`.
+- **Coverage**: both layouts — legacy `.omc/state/<mode>-state.json` and session-scoped `.omc/state/sessions/<sessionId>/<mode>-state.json`. The starting session's own state is excluded; malformed state files are ignored, never findings.
+- **Doctrine**: the watchdog observes and reports only. It never mutates state, never resumes a run, and never infers approval — reclaiming a dead run (`/oh-my-claudecode:cancel` to clean up, or re-entering the mode to resume from artifacts) is always a human decision.
 
 
 ---

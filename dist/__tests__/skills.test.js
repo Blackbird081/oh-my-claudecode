@@ -73,10 +73,10 @@ describe('Builtin Skills', () => {
         clearSkillsCache();
     });
     describe('createBuiltinSkills()', () => {
-        it('should return correct number of skills (33 canonical + 2 aliases)', () => {
+        it('should return correct number of skills (42 canonical + 2 aliases)', () => {
             const skills = createBuiltinSkills();
-            // 37 entries: 35 canonical skills + 2 aliases (cancel-ralph, psm)
-            expect(skills).toHaveLength(37);
+            // 45 entries: 43 canonical skills + 2 aliases (cancel-ralph, psm)
+            expect(skills).toHaveLength(45);
         });
         it('should return an array of BuiltinSkill objects', () => {
             const skills = createBuiltinSkills();
@@ -122,7 +122,10 @@ describe('Builtin Skills', () => {
             // which were ungated in 5.0.0.
             const expectedSkills = [
                 'ai-slop-cleaner',
+                'agent-doc-discipline',
+                'architecture-survey',
                 'ask',
+                'ask-navigator',
                 'autopilot',
                 'autoresearch',
                 'cancel',
@@ -131,12 +134,17 @@ describe('Builtin Skills', () => {
                 'debug',
                 'deep-interview',
                 'deepinit',
+                'diagram',
                 'execute',
                 'external-context',
                 'graph',
+                'harbor',
                 'hud',
+                'intent',
                 'minimal-code-discipline',
+                'minimal-prose-discipline',
                 'launch',
+                'loft',
                 'drydock',
                 'omc-doctor',
                 'omc-plan',
@@ -551,13 +559,16 @@ describe('Builtin Skills', () => {
             expect(skill?.template).toContain('continue the normal Team flow; do not emit WSL-required guidance');
             expect(skill?.template).toContain('Only when no tmux-compatible binary is available');
         });
-        it('conditions team Claude fallback guidance on Claude CLI availability', () => {
+        it('documents fail-closed provider preflight instead of implicit Claude fallback', () => {
             const skill = getBuiltinSkill('team');
             expect(skill).toBeDefined();
-            expect(skill?.template).toContain('only when the Claude CLI is resolvable');
-            expect(skill?.template).toContain('no runnable fallback exists');
-            expect(skill?.template).toContain('orchestration/startup is unavailable');
+            expect(skill?.template).toContain('Missing CLI preflight');
+            expect(skill?.template).toContain('strictly preflights only providers that are effective for its initial workers');
+            expect(skill?.template).toContain('fails before team state or multiplexer side effects are created');
+            expect(skill?.template).toContain('never silently changes a selected role to Claude when its provider is unavailable');
+            expect(skill?.template).toContain('fail closed if it is unavailable');
             expect(skill?.template).toContain('omc doctor --team-routing');
+            expect(skill?.template).not.toContain('only when the Claude CLI is resolvable');
         });
         it('should be case-insensitive', () => {
             const skillLower = getBuiltinSkill('autopilot');
@@ -577,12 +588,15 @@ describe('Builtin Skills', () => {
     describe('listBuiltinSkillNames()', () => {
         it('should return canonical skill names by default', () => {
             const names = listBuiltinSkillNames();
-            expect(names).toHaveLength(35);
+            expect(names).toHaveLength(43);
             expect(names).toContain('ai-slop-cleaner');
             expect(names).toContain('minimal-code-discipline');
             expect(names).toContain('launch');
+            expect(names).toContain('loft');
+            expect(names).toContain('harbor');
             expect(names).toContain('drydock');
             expect(names).toContain('ask');
+            expect(names).toContain('ask-navigator');
             expect(names).toContain('autopilot');
             expect(names).toContain('autoresearch');
             expect(names).toContain('cancel');
@@ -611,7 +625,7 @@ describe('Builtin Skills', () => {
         it('should include aliases when explicitly requested', () => {
             const names = listBuiltinSkillNames({ includeAliases: true });
             // swarm alias removed in #1131; learner retired in 5.0.0; cancel-ralph and psm remain
-            expect(names).toHaveLength(37);
+            expect(names).toHaveLength(45);
             expect(names).toContain('ai-slop-cleaner');
             expect(names).toContain('autoresearch');
             expect(names).toContain('self-improve');
