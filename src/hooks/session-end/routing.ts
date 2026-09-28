@@ -24,8 +24,6 @@ export type GateVerdict =
   | { kind: 'human'; criterion: string }
   | { kind: 'auto-pass'; signerFact: string };
 
-const HUMAN_ONLY_GATES: ReadonlySet<GateName> = new Set(['intent-accept', 'review-approve']);
-
 const CRITERIA: ReadonlyArray<[keyof Pick<GateFacts, 'irreversibleOrExternal' | 'precedentSetting' | 'valueJudgment'>, string]> = [
   ['irreversibleOrExternal', '判据一：不可逆或外部可见'],
   ['precedentSetting', '判据二：先例性'],
