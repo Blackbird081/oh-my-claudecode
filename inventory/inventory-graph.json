@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "2857f6b41bbeb0127e10203e632bd011c41524d1",
-    "sourceSha256": "e58a41d3574184f2575ae7ccade944c5fc72cccbc4d365fd570f0aea083896ee",
+    "head": "c0b60e4135a50522674e37bbfd9d12c7f4a479c3",
+    "sourceSha256": "643a8360db1a80e63cac2f3334fc21801d8a038dd739db0185afcededeb22e73",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "2857f6b41bbeb0127e10203e632bd011c41524d1",
-  "sourceSha256": "e58a41d3574184f2575ae7ccade944c5fc72cccbc4d365fd570f0aea083896ee",
+  "head": "c0b60e4135a50522674e37bbfd9d12c7f4a479c3",
+  "sourceSha256": "643a8360db1a80e63cac2f3334fc21801d8a038dd739db0185afcededeb22e73",
   "counts": {
     "public": {
       "skills": 47,
@@ -23,13 +23,13 @@
       "total": 96
     },
     "internal": {
-      "hookFiles": 327,
+      "hookFiles": 328,
       "featureFiles": 84,
       "toolFiles": 61,
       "libFiles": 47,
       "templateHooks": 23,
-      "srcFiles": 1412,
-      "total": 1435
+      "srcFiles": 1413,
+      "total": 1436
     },
     "generated": {
       "distFiles": 5066,
@@ -41,7 +41,7 @@
     },
     "skills": 47,
     "commands": 21,
-    "hookFiles": 327,
+    "hookFiles": 328,
     "workflows": 8,
     "agentDefinitions": 18,
     "promptLikeFiles": 61
@@ -385,6 +385,7 @@
       "src/hooks/rules-injector/finder.test.ts",
       "src/hooks/rules-injector/finder.ts",
       "src/hooks/rules-injector/index.ts",
+      "src/hooks/rules-injector/matcher.test.ts",
       "src/hooks/rules-injector/matcher.ts",
       "src/hooks/rules-injector/parser.test.ts",
       "src/hooks/rules-injector/parser.ts",
@@ -6204,6 +6205,7 @@
       "src/hooks/rules-injector/finder.test.ts",
       "src/hooks/rules-injector/finder.ts",
       "src/hooks/rules-injector/index.ts",
+      "src/hooks/rules-injector/matcher.test.ts",
       "src/hooks/rules-injector/matcher.ts",
       "src/hooks/rules-injector/parser.test.ts",
       "src/hooks/rules-injector/parser.ts",
@@ -38552,6 +38554,11 @@
         "path": "src/hooks/rules-injector/index.ts"
       },
       {
+        "id": "src/hooks/rules-injector/matcher.test.ts",
+        "kind": "hook",
+        "path": "src/hooks/rules-injector/matcher.test.ts"
+      },
+      {
         "id": "src/hooks/rules-injector/matcher.ts",
         "kind": "hook",
         "path": "src/hooks/rules-injector/matcher.ts"
@@ -42045,6 +42052,11 @@
         "id": "tests/lint/issue-4154-windows-claude-invocation.test.ts",
         "kind": "other",
         "path": "tests/lint/issue-4154-windows-claude-invocation.test.ts"
+      },
+      {
+        "id": "tests/lint/issue-4156-windows-dev-zero.test.ts",
+        "kind": "other",
+        "path": "tests/lint/issue-4156-windows-dev-zero.test.ts"
       },
       {
         "id": "tests/lint/session-end-forwarder-no-op.test.ts",
@@ -63734,6 +63746,16 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/hooks/rules-injector/matcher.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/rules-injector/matcher.test.ts",
+        "to": "src/hooks/rules-injector/matcher.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/rules-injector/matcher.ts",
         "to": "external:crypto",
         "kind": "imports"
@@ -82344,6 +82366,21 @@
         "kind": "imports"
       },
       {
+        "from": "tests/lint/issue-4156-windows-dev-zero.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/issue-4156-windows-dev-zero.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/issue-4156-windows-dev-zero.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
         "from": "tests/lint/session-end-forwarder-no-op.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -82535,12 +82572,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 7118,
-      "edgeCount": 8083,
-      "importEdgeCount": 6671,
+      "nodeCount": 7120,
+      "edgeCount": 8088,
+      "importEdgeCount": 6676,
       "registerEdgeCount": 68
     }
   },
-  "inventorySha256": "5f46e3e85b93cb1b134f20f227ed76e17faefdef6ecce1a91395a64baee5b0eb",
-  "manifestSha256": "ebf39cc4ae0ad908d2a814ec07232c26a5740f1e353905031bc271633fc85b9b"
+  "inventorySha256": "5ef33959a4749836cfea3cda79ea4567a2e19aaf7d451a41ab76d581d9af52c2",
+  "manifestSha256": "f2f7f78bced2fdcc11a64febc28ce27cb2b5d10d3a6d83d16ed16a78eccbdab6"
 }
