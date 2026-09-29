@@ -276,8 +276,26 @@ describe('SessionEnd durable worker', () => {
       tmuxPane: '%42',
     });
     expect(JSON.stringify(routing)).not.toContain('original-secret');
-    expect(workerEnvironment()).toHaveProperty('APPDATA');
-    expect(workerEnvironment()).toHaveProperty('LOCALAPPDATA');
+    
+    // On Windows, APPDATA/LOCALAPPDATA should be forwarded for gh auth
+    const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+    try {
+      vi.stubEnv('APPDATA', 'C:\\Users\\Test\\AppData\\Roaming');
+      vi.stubEnv('LOCALAPPDATA', 'C:\\Users\\Test\\AppData\\Local');
+      expect(workerEnvironment()).toHaveProperty('APPDATA');
+      expect(workerEnvironment()).toHaveProperty('LOCALAPPDATA');
+    } finally {
+      if (originalPlatform) Object.defineProperty(process, 'platform', originalPlatform);
+      else Object.defineProperty(process, 'platform', { value: process.platform === 'win32' ? 'linux' : process.platform, configurable: true });
+    }
+    
+    // On POSIX, APPDATA/LOCALAPPDATA should not be forwarded
+    if (process.platform !== 'win32') {
+      expect(workerEnvironment()).not.toHaveProperty('APPDATA');
+      expect(workerEnvironment()).not.toHaveProperty('LOCALAPPDATA');
+    }
+    
     expect(workerEnvironment()).not.toHaveProperty('OMC_OPENCLAW_CONFIG');
     expect(workerEnvironment()).not.toHaveProperty('OPENCLAW_REPLY_THREAD');
     expect(workerEnvironment()).not.toHaveProperty('TMUX');
