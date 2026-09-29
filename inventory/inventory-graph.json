@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "54814f18bac8fef5c659ea59a67cc527ffd33efb",
-    "sourceSha256": "02d8d53d9686e3faef9bced96102dfcba4f62bbb59ab27b1006997d3e21be44c",
+    "head": "2e6a375a034a1f4e3bc8ecc6d5926b24a3868a32",
+    "sourceSha256": "7e022468cb555257abb0fe47fbb75874bb68d81f30d942235203f711f330edf7",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "54814f18bac8fef5c659ea59a67cc527ffd33efb",
-  "sourceSha256": "02d8d53d9686e3faef9bced96102dfcba4f62bbb59ab27b1006997d3e21be44c",
+  "head": "2e6a375a034a1f4e3bc8ecc6d5926b24a3868a32",
+  "sourceSha256": "7e022468cb555257abb0fe47fbb75874bb68d81f30d942235203f711f330edf7",
   "counts": {
     "public": {
       "skills": 47,
@@ -42047,6 +42047,11 @@
         "path": "tests/lint/issue-4154-windows-claude-invocation.test.ts"
       },
       {
+        "id": "tests/lint/issue-4156-windows-dev-zero.test.ts",
+        "kind": "other",
+        "path": "tests/lint/issue-4156-windows-dev-zero.test.ts"
+      },
+      {
         "id": "tests/lint/session-end-forwarder-no-op.test.ts",
         "kind": "other",
         "path": "tests/lint/session-end-forwarder-no-op.test.ts"
@@ -82344,6 +82349,21 @@
         "kind": "imports"
       },
       {
+        "from": "tests/lint/issue-4156-windows-dev-zero.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/issue-4156-windows-dev-zero.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/issue-4156-windows-dev-zero.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
         "from": "tests/lint/session-end-forwarder-no-op.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -82535,12 +82555,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 7118,
-      "edgeCount": 8083,
-      "importEdgeCount": 6671,
+      "nodeCount": 7119,
+      "edgeCount": 8086,
+      "importEdgeCount": 6674,
       "registerEdgeCount": 68
     }
   },
-  "inventorySha256": "5f46e3e85b93cb1b134f20f227ed76e17faefdef6ecce1a91395a64baee5b0eb",
-  "manifestSha256": "5700de8c5ede8bdeb351ec2134f81fbd10fe06874cde43204c3aa8632f025ef1"
+  "inventorySha256": "6dfb2a24b1a5bc715dea5fb5b87798745fa02e9ef7c3010ac0a30d1d14c8bdd7",
+  "manifestSha256": "b80aec3f5e2fdcb99ad542d61146feae34c573c21dc5a573ba7e09aa4cf71c2e"
 }
