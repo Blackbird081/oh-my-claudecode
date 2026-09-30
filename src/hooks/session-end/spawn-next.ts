@@ -2,9 +2,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { spawn, type SpawnOptions } from 'child_process';
-import { decideNextStage, VERIFY_COMMAND_PATTERN, MAX_VERIFY_COMMAND_LENGTH, type ChainOutcome, type RouteTable } from './routing.js';
+import { decideNextStage, VERIFY_COMMAND_PATTERN, MAX_VERIFY_COMMAND_LENGTH, MAX_VERIFY_COMMANDS, type ChainOutcome, type RouteTable } from './routing.js';
 import { getOmcRoot, validateSessionId } from '../../lib/worktree-paths.js';
-import { quoteForCmd, isNativeWindowsShell } from '../../cli/tmux-utils.js';
+import { quoteForCmd } from '../../cli/tmux-utils.js';
 
 export interface SpawnNextTracker {
   repo: string;
@@ -78,12 +78,24 @@ export const AFK_SPAWN_FLAGS = [
  * they are re-checked against the routing pattern here rather than trusted from
  * whatever route table produced the directive.
  */
-export function factoryLinkArgv(prompt: string, sessionId: string, verifyCommands: readonly string[] = []): string[] {
-  if (verifyCommands.length === 0) return ['-p', prompt, '--session-id', sessionId, ...AFK_SPAWN_FLAGS];
+export function factoryLinkArgv(
+  prompt: string,
+  sessionId: string,
+  verifyCommands: readonly string[] = [],
+  fixedBashCommands: readonly string[] = [],
+): string[] {
+  if (verifyCommands.length === 0 && fixedBashCommands.length === 0) {
+    return ['-p', prompt, '--session-id', sessionId, ...AFK_SPAWN_FLAGS];
+  }
+  const isValid = (command: string) => command.length <= MAX_VERIFY_COMMAND_LENGTH && VERIFY_COMMAND_PATTERN.test(command);
+  // fixedBashCommands are caller-owned constants (e.g. ralph's read-only git
+  // set); only the user/route-declared verify list counts against the cap.
   const allowedTools = [
     AFK_ALLOWED_TOOLS,
+    ...fixedBashCommands.filter(isValid).map((command) => `Bash(${command})`),
     ...verifyCommands
-      .filter((command) => command.length <= MAX_VERIFY_COMMAND_LENGTH && VERIFY_COMMAND_PATTERN.test(command))
+      .filter(isValid)
+      .slice(0, MAX_VERIFY_COMMANDS)
       .map((command) => `Bash(${command})`),
   ].join(',');
   const flags = [...AFK_SPAWN_FLAGS];
@@ -198,6 +210,16 @@ export function executeSpawnNext(chain: SpawnNextChain, directory: string, spawn
  * neutralizes both issues while maintaining proper argument escaping via
  * quoteForCmd (which doubles quotes and percent signs, rejecting CR/LF).
  *
+ * The .cmd-shim constraint is a Windows PLATFORM fact, not a shell fact: gate
+ * on process.platform, never on shell detection. Gating on the shell made
+ * Git Bash (MSYSTEM set) skip the cmd.exe route and spawn the .cmd shim
+ * directly, which CreateProcess cannot exec — the child died instantly and
+ * silently (stdio ignored), so `omc ralph afk` under Git Bash launched
+ * nothing. Factory chain links escaped this only by accident: the detached
+ * worker's env is an allowlist that drops MSYSTEM. The long-running factory
+ * listener (src/factory/listener.ts), which spawns links from its own
+ * inherited environment, had the same broken route under Git Bash.
+ *
  * detached:true is win32-hostile here (dogfood bisect: cmd.exe children
  * spawned detached exit 1 before writing a transcript), so it is only
  * applied off-win32. Orphaning still holds: Windows children survive
@@ -208,7 +230,7 @@ export function defaultSpawnFn(command: string, args: string[], ctx?: SpawnConte
     process.platform === 'win32'
       ? { windowsHide: true, cwd: ctx?.cwd }
       : { detached: true, windowsHide: true, cwd: ctx?.cwd };
-  if (isNativeWindowsShell() && command === 'claude') {
+  if (process.platform === 'win32' && command === 'claude') {
     const pIdx = args.indexOf('-p');
     const inlinePrompt = pIdx !== -1 && pIdx + 1 < args.length ? args[pIdx + 1] : undefined;
     if (inlinePrompt !== undefined && !inlinePrompt.startsWith('--')) {
@@ -234,7 +256,7 @@ export function defaultSpawnFn(command: string, args: string[], ctx?: SpawnConte
   // gh is a .cmd shim on Windows too. Use --body-file - for comment bodies to
   // avoid cmd.exe's quote toggle and %VAR% expansion on free-form text; properly
   // quote remaining argv using quoteForCmd.
-  if (isNativeWindowsShell() && command === 'gh') {
+  if (process.platform === 'win32' && command === 'gh') {
     const bodyIdx = args.indexOf('--body');
     if (bodyIdx !== -1 && bodyIdx + 1 < args.length) {
       const bodyText = args[bodyIdx + 1];
