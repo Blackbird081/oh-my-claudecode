@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "61e34aeb68b08308538bf66397084e12f488ca49",
-    "sourceSha256": "c1dceeb098a6e281b9b4bcb8080c15164623ef5d7ac80f175ed18a0c53e80af4",
+    "head": "01f504c60d8493f9fe18577440f0af1038826719",
+    "sourceSha256": "2eac5d88ed71141d8db797e7c76119256448ac53c366fc7b79ac9ceb5251109b",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "61e34aeb68b08308538bf66397084e12f488ca49",
-  "sourceSha256": "c1dceeb098a6e281b9b4bcb8080c15164623ef5d7ac80f175ed18a0c53e80af4",
+  "head": "01f504c60d8493f9fe18577440f0af1038826719",
+  "sourceSha256": "2eac5d88ed71141d8db797e7c76119256448ac53c366fc7b79ac9ceb5251109b",
   "counts": {
     "public": {
       "skills": 47,
@@ -28,8 +28,8 @@
       "toolFiles": 61,
       "libFiles": 47,
       "templateHooks": 23,
-      "srcFiles": 1418,
-      "total": 1441
+      "srcFiles": 1420,
+      "total": 1443
     },
     "generated": {
       "distFiles": 5066,
@@ -36435,6 +36435,11 @@
         "path": "src/cli/__tests__/plugin-dir-capture.test.ts"
       },
       {
+        "id": "src/cli/__tests__/ralph-afk.test.ts",
+        "kind": "src",
+        "path": "src/cli/__tests__/ralph-afk.test.ts"
+      },
+      {
         "id": "src/cli/__tests__/self-improve-paths.test.ts",
         "kind": "src",
         "path": "src/cli/__tests__/self-improve-paths.test.ts"
@@ -36603,6 +36608,11 @@
         "id": "src/cli/commands/intake.ts",
         "kind": "src",
         "path": "src/cli/commands/intake.ts"
+      },
+      {
+        "id": "src/cli/commands/ralph.ts",
+        "kind": "src",
+        "path": "src/cli/commands/ralph.ts"
       },
       {
         "id": "src/cli/commands/ralphthon.ts",
@@ -53092,6 +53102,41 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/__tests__/ralph-afk.test.ts",
+        "to": "external:commander",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/ralph-afk.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/ralph-afk.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/ralph-afk.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/ralph-afk.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/ralph-afk.test.ts",
+        "to": "src/cli/commands/ralph.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/ralph-afk.test.ts",
+        "to": "src/hooks/session-end/spawn-next.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/__tests__/self-improve-paths.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -53944,6 +53989,36 @@
       {
         "from": "src/cli/commands/intake.ts",
         "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ralph.ts",
+        "to": "external:commander",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/ralph.ts",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ralph.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ralph.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ralph.ts",
+        "to": "src/features/builtin-skills/skills.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ralph.ts",
+        "to": "src/hooks/session-end/spawn-next.ts",
         "kind": "imports"
       },
       {
@@ -82778,12 +82853,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 7125,
-      "edgeCount": 8123,
-      "importEdgeCount": 6711,
+      "nodeCount": 7127,
+      "edgeCount": 8136,
+      "importEdgeCount": 6723,
       "registerEdgeCount": 68
     }
   },
-  "inventorySha256": "0c2f6ff7113e72785fde318cb73f437bae2357143526fa6aa7742eb9673f811b",
-  "manifestSha256": "e50b1a3fdebe0cc5cd079d187da3361f0c71c0e78877eeca6918fa3b926b22c7"
+  "inventorySha256": "034338b87eed96a1104af8ad498d631eb1047f68d816e3b303fd165f1de0d7c0",
+  "manifestSha256": "17ad65a56be8cf02ca1656a104ccd0f118de5782df86719fbdc584ae850503b7"
 }

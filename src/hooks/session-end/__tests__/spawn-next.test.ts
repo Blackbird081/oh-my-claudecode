@@ -279,6 +279,20 @@ describe('defaultSpawnFn win32 .cmd shim routing', () => {
     expect(opts).toMatchObject({ stdio: 'ignore', windowsVerbatimArguments: true });
   });
 
+  it('routes claude through cmd.exe on win32 even under Git Bash (MSYSTEM set)', () => {
+    // Regression guard: the .cmd-shim constraint is a platform fact, not a
+    // shell fact. Gating on isNativeWindowsShell() made Git Bash (MSYSTEM
+    // exported by MSYS2) skip the cmd.exe route, so the .cmd shim was
+    // spawned directly and died silently — an `omc ralph afk` launch under
+    // Git Bash produced no session at all.
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+    vi.stubEnv('MSYSTEM', 'MINGW64');
+    defaultSpawnFn('claude', ['-p', 'task', '--session-id', 'sess-ms']);
+    const [command] = vi.mocked(childProcess.spawn).mock.calls[0];
+    expect(command).toBe('cmd.exe');
+    vi.unstubAllEnvs();
+  });
+
   it('routes claude through cmd.exe unchanged (regression guard)', () => {
     Object.defineProperty(process, 'platform', { value: 'win32' });
     defaultSpawnFn('claude', ['-p', '继续 launch 环', '--session-id', 'sess-9']);

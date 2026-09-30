@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { spawn, type SpawnOptions } from 'child_process';
-import { decideNextStage, VERIFY_COMMAND_PATTERN, MAX_VERIFY_COMMAND_LENGTH, type ChainOutcome, type RouteTable } from './routing.js';
+import { decideNextStage, VERIFY_COMMAND_PATTERN, MAX_VERIFY_COMMAND_LENGTH, MAX_VERIFY_COMMANDS, type ChainOutcome, type RouteTable } from './routing.js';
 import { getOmcRoot, validateSessionId } from '../../lib/worktree-paths.js';
 import { quoteForCmd } from '../../cli/tmux-utils.js';
 
@@ -84,6 +84,7 @@ export function factoryLinkArgv(prompt: string, sessionId: string, verifyCommand
     AFK_ALLOWED_TOOLS,
     ...verifyCommands
       .filter((command) => command.length <= MAX_VERIFY_COMMAND_LENGTH && VERIFY_COMMAND_PATTERN.test(command))
+      .slice(0, MAX_VERIFY_COMMANDS)
       .map((command) => `Bash(${command})`),
   ].join(',');
   const flags = [...AFK_SPAWN_FLAGS];
@@ -203,8 +204,10 @@ export function executeSpawnNext(chain: SpawnNextChain, directory: string, spawn
  * Git Bash (MSYSTEM set) skip the cmd.exe route and spawn the .cmd shim
  * directly, which CreateProcess cannot exec — the child died instantly and
  * silently (stdio ignored), so `omc ralph afk` under Git Bash launched
- * nothing. Factory links dodged this only by accident: the detached worker
- * runs with a filtered env that drops MSYSTEM.
+ * nothing. Factory chain links escaped this only by accident: the detached
+ * worker's env is an allowlist that drops MSYSTEM. The long-running factory
+ * listener (src/factory/listener.ts), which spawns links from its own
+ * inherited environment, had the same broken route under Git Bash.
  *
  * detached:true is win32-hostile here (dogfood bisect: cmd.exe children
  * spawned detached exit 1 before writing a transcript), so it is only
