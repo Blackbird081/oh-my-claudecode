@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { spawn, type SpawnOptions } from 'child_process';
-import { decideNextStage, type ChainOutcome, type RouteTable } from './routing.js';
+import { decideNextStage, VERIFY_COMMAND_PATTERN, MAX_VERIFY_COMMAND_LENGTH, type ChainOutcome, type RouteTable } from './routing.js';
 import { getOmcRoot, validateSessionId } from '../../lib/worktree-paths.js';
 import { quoteForCmd, isNativeWindowsShell } from '../../cli/tmux-utils.js';
 
@@ -71,9 +71,24 @@ export const AFK_SPAWN_FLAGS = [
   '--setting-sources', 'project,local',
 ];
 
-/** Args (command excluded) for one factory chain link: intent prompt + AFK permission profile. */
-export function factoryLinkArgv(prompt: string, sessionId: string): string[] {
-  return ['-p', prompt, '--session-id', sessionId, ...AFK_SPAWN_FLAGS];
+/**
+ * Args (command excluded) for one factory chain link: intent prompt + AFK
+ * permission profile. A stage's declared `verify` commands extend the profile
+ * with exactly those `Bash(...)` entries — the argv is a trust boundary, so
+ * they are re-checked against the routing pattern here rather than trusted from
+ * whatever route table produced the directive.
+ */
+export function factoryLinkArgv(prompt: string, sessionId: string, verifyCommands: readonly string[] = []): string[] {
+  if (verifyCommands.length === 0) return ['-p', prompt, '--session-id', sessionId, ...AFK_SPAWN_FLAGS];
+  const allowedTools = [
+    AFK_ALLOWED_TOOLS,
+    ...verifyCommands
+      .filter((command) => command.length <= MAX_VERIFY_COMMAND_LENGTH && VERIFY_COMMAND_PATTERN.test(command))
+      .map((command) => `Bash(${command})`),
+  ].join(',');
+  const flags = [...AFK_SPAWN_FLAGS];
+  flags[flags.indexOf('--allowedTools') + 1] = allowedTools;
+  return ['-p', prompt, '--session-id', sessionId, ...flags];
 }
 
 const REPO_PATTERN = /^[\w.-]+\/[\w.-]+$/;
@@ -122,7 +137,7 @@ export function planSpawnNext(chain: SpawnNextChain, omcRoot: string): SpawnNext
   return {
     directive,
     handoffPath,
-    spawnArgv: ['claude', ...factoryLinkArgv(`/${directive.skill} 继续 ${directive.stage} 环；交接上下文：${path.basename(handoffPath)}`, nextSessionId)],
+    spawnArgv: ['claude', ...factoryLinkArgv(`/${directive.skill} 继续 ${directive.stage} 环；交接上下文：${path.basename(handoffPath)}`, nextSessionId, directive.verify)],
     nextSessionId,
     trackerCommands,
   };
