@@ -86,7 +86,8 @@ export function factoryLinkArgv(prompt: string, sessionId: string, verifyCommand
       .filter((command) => command.length <= MAX_VERIFY_COMMAND_LENGTH && VERIFY_COMMAND_PATTERN.test(command))
       .map((command) => `Bash(${command})`),
   ].join(',');
-  const flags = AFK_SPAWN_FLAGS.flatMap((flag) => (flag === '--allowedTools' ? [flag, allowedTools] : [flag]));
+  const flags = [...AFK_SPAWN_FLAGS];
+  flags[flags.indexOf('--allowedTools') + 1] = allowedTools;
   return ['-p', prompt, '--session-id', sessionId, ...flags];
 }
 

@@ -226,6 +226,9 @@ describe('factoryLinkArgv', () => {
     const argv = factoryLinkArgv('/launch 继续 launch 环', 'sess-9', ['npm test', 'npm run build']);
     const tools = argv[argv.indexOf('--allowedTools') + 1];
     expect(tools).toBe(`${AFK_ALLOWED_TOOLS},Bash(npm test),Bash(npm run build)`);
+    // The value is replaced in place, never followed by a stray base-profile copy.
+    expect(argv).toHaveLength(4 + AFK_SPAWN_FLAGS.length);
+    expect(argv).not.toContain(AFK_ALLOWED_TOOLS);
     // Only the allowedTools value changes; the rest of the profile is intact.
     expect(argv[argv.indexOf('--permission-mode') + 1]).toBe('acceptEdits');
     expect(argv[argv.indexOf('--setting-sources') + 1]).toBe('project,local');
@@ -233,8 +236,7 @@ describe('factoryLinkArgv', () => {
 
   it('drops verify commands that fail the argv-boundary recheck, leaving the base profile', () => {
     const argv = factoryLinkArgv('/launch 继续 launch 环', 'sess-9', ['npm test && whoami', 'npm test,Write']);
-    const tools = argv[argv.indexOf('--allowedTools') + 1];
-    expect(tools).toBe(AFK_ALLOWED_TOOLS);
+    expect(argv.slice(4)).toEqual(AFK_SPAWN_FLAGS);
   });
 });
 
