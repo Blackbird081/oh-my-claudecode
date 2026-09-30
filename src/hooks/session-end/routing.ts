@@ -3,9 +3,38 @@ export type ChainOutcome = 'success' | 'failed' | 'needs-human';
 export interface ChainDirective {
   stage: string;
   skill: string;
+  /**
+   * Verification commands the AFK link to this stage may run. A development-type
+   * ring cannot execute its spec's acceptance criteria without them: the AFK
+   * permission profile (see AFK_ALLOWED_TOOLS) grants no general Bash, so a
+   * declared `verify` list is the only way a chain link runs tests or builds.
+   */
+  verify?: readonly string[];
 }
 
 export type RouteTable = Readonly<Record<string, ChainDirective>>;
+
+/**
+ * A declared verify command is interpolated into the link's `--allowedTools`
+ * argv, which is comma-separated — so a comma, a shell metacharacter, or a
+ * leading option dash would either split the allowlist entry or smuggle shell
+ * syntax past the profile. Only plain command lines survive; anything else is
+ * dropped, and a directive that keeps none of its commands simply runs with the
+ * base profile.
+ */
+export const VERIFY_COMMAND_PATTERN = /^[A-Za-z][A-Za-z0-9 _.:/=%@-]*$/;
+export const MAX_VERIFY_COMMANDS = 10;
+export const MAX_VERIFY_COMMAND_LENGTH = 120;
+
+function normalizeVerifyCommands(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const commands = value
+    .filter((entry): entry is string => typeof entry === 'string'
+      && entry.length <= MAX_VERIFY_COMMAND_LENGTH
+      && VERIFY_COMMAND_PATTERN.test(entry))
+    .slice(0, MAX_VERIFY_COMMANDS);
+  return commands.length > 0 ? commands : undefined;
+}
 
 /**
  * Keep only well-formed `outcome:reason` directives. A table written in the
@@ -24,9 +53,10 @@ export function normalizeRouteTable(input: unknown): RouteTable | null {
   for (const [key, value] of entries) {
     if (!key.includes(':')) continue;
     if (!value || typeof value !== 'object') continue;
-    const { stage, skill } = value as { stage?: unknown; skill?: unknown };
+    const { stage, skill, verify } = value as { stage?: unknown; skill?: unknown; verify?: unknown };
     if (typeof stage !== 'string' || typeof skill !== 'string') continue;
-    directives[key] = { stage, skill };
+    const verifyCommands = normalizeVerifyCommands(verify);
+    directives[key] = verifyCommands ? { stage, skill, verify: verifyCommands } : { stage, skill };
   }
   return Object.keys(directives).length > 0 ? directives : null;
 }

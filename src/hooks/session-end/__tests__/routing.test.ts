@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { decideNextStage, gradeGate, normalizeRouteTable } from '../routing.js';
+import { decideNextStage, gradeGate, normalizeRouteTable, MAX_VERIFY_COMMANDS } from '../routing.js';
 import type { RouteTable, GateFacts } from '../routing.js';
 
 const table: RouteTable = {
@@ -104,6 +104,36 @@ describe('normalizeRouteTable', () => {
       'needs-human:*': 'not-an-object',
     };
     expect(normalizeRouteTable(mixed)).toEqual({ 'success:*': { stage: 'launch', skill: 'launch' } });
+  });
+
+  it('keeps plain declared verify commands on the directive', () => {
+    expect(normalizeRouteTable({ 'success:other': { stage: 'launch', skill: 'launch', verify: ['npm test', 'npm run build', 'npx vitest run'] } }))
+      .toEqual({ 'success:other': { stage: 'launch', skill: 'launch', verify: ['npm test', 'npm run build', 'npx vitest run'] } });
+  });
+
+  it('drops verify commands that would split the allowlist or smuggle shell syntax', () => {
+    // The allowlist value is comma-separated and lands in spawn argv: a comma
+    // splits one entry into two, and metacharacters or a leading option dash
+    // would escape the declared command. Both are dropped silently.
+    const hostile = {
+      'success:other': {
+        stage: 'launch',
+        skill: 'launch',
+        verify: ['npm test && rm -rf /', 'npm test,Write', '--dangerously-skip-permissions', 'npm test;whoami', '$(whoami)', 'a'.repeat(121)],
+      },
+    };
+    expect(normalizeRouteTable(hostile)).toEqual({ 'success:other': { stage: 'launch', skill: 'launch' } });
+  });
+
+  it('caps the verify list at the declared maximum', () => {
+    const many = { 'success:other': { stage: 'launch', skill: 'launch', verify: Array.from({ length: 14 }, (_, index) => `npm run check${index}`) } };
+    expect(normalizeRouteTable(many)?.['success:other']?.verify).toHaveLength(MAX_VERIFY_COMMANDS);
+  });
+
+  it('omits the verify key when the list is missing, non-array, or empty of valid entries', () => {
+    expect(normalizeRouteTable({ 'success:other': { stage: 'a', skill: 'b' } })?.['success:other']).toEqual({ stage: 'a', skill: 'b' });
+    expect(normalizeRouteTable({ 'success:other': { stage: 'a', skill: 'b', verify: 'npm test' } })?.['success:other']).toEqual({ stage: 'a', skill: 'b' });
+    expect(normalizeRouteTable({ 'success:other': { stage: 'a', skill: 'b', verify: [] } })?.['success:other']).toEqual({ stage: 'a', skill: 'b' });
   });
 });
 

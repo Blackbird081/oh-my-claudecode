@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
-import { AFK_SPAWN_FLAGS, defaultSpawnFn, executeSpawnNext, factoryLinkArgv, planSpawnNext, spawnNextAlertComment, type SpawnNextChain, type SpawnFn } from '../spawn-next.js';
+import { AFK_ALLOWED_TOOLS, AFK_SPAWN_FLAGS, defaultSpawnFn, executeSpawnNext, factoryLinkArgv, planSpawnNext, spawnNextAlertComment, type SpawnNextChain, type SpawnFn } from '../spawn-next.js';
 
 vi.mock('child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('child_process')>();
@@ -63,6 +63,15 @@ describe('planSpawnNext', () => {
     for (const flag of AFK_SPAWN_FLAGS) expect(plan?.spawnArgv).toContain(flag);
     expect(plan?.spawnArgv).toContain('--permission-mode');
     expect(plan?.spawnArgv).toContain('--allowedTools');
+  });
+
+  it("propagates the routed stage's declared verify commands into the link's allowedTools", () => {
+    const withVerify = planSpawnNext({
+      ...chain,
+      routeTable: { 'success:clear': { stage: 'launch', skill: 'launch', verify: ['npm test'] } },
+    }, '/omc-root');
+    const tools = withVerify!.spawnArgv[withVerify!.spawnArgv.indexOf('--allowedTools') + 1];
+    expect(tools).toBe(`${AFK_ALLOWED_TOOLS},Bash(npm test)`);
   });
 
   it('isolates AFK links from user-level settings via --setting-sources', () => {
@@ -210,6 +219,23 @@ describe('factoryLinkArgv', () => {
     expect(argv[1]).toBe('/intent 处理进货：<url>。');
     expect(argv[2]).toBe('--session-id');
     expect(argv[3]).toBe('sess-9');
+    expect(argv.slice(4)).toEqual(AFK_SPAWN_FLAGS);
+  });
+
+  it('extends the allowedTools value with exactly the declared verify commands', () => {
+    const argv = factoryLinkArgv('/launch 继续 launch 环', 'sess-9', ['npm test', 'npm run build']);
+    const tools = argv[argv.indexOf('--allowedTools') + 1];
+    expect(tools).toBe(`${AFK_ALLOWED_TOOLS},Bash(npm test),Bash(npm run build)`);
+    // The value is replaced in place, never followed by a stray base-profile copy.
+    expect(argv).toHaveLength(4 + AFK_SPAWN_FLAGS.length);
+    expect(argv).not.toContain(AFK_ALLOWED_TOOLS);
+    // Only the allowedTools value changes; the rest of the profile is intact.
+    expect(argv[argv.indexOf('--permission-mode') + 1]).toBe('acceptEdits');
+    expect(argv[argv.indexOf('--setting-sources') + 1]).toBe('project,local');
+  });
+
+  it('drops verify commands that fail the argv-boundary recheck, leaving the base profile', () => {
+    const argv = factoryLinkArgv('/launch 继续 launch 环', 'sess-9', ['npm test && whoami', 'npm test,Write']);
     expect(argv.slice(4)).toEqual(AFK_SPAWN_FLAGS);
   });
 });
