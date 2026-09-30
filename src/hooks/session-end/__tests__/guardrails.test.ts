@@ -7,6 +7,7 @@ import {
   releaseChainSlot,
   chainDayKey,
   DAILY_CHAIN_LIMIT,
+  dailyChainLimit,
   readChainStopMarker,
   clearChainStopMarker,
   type ChainSlotResult,
@@ -177,5 +178,28 @@ describe('acquireChainSlot — daily N=10 cap', () => {
     const retry = acquireChainSlot('intent-usage', root);
     expect(retry.allowed).toBe(true);
     if (retry.allowed) releaseChainSlot(retry);
+  });
+});
+
+describe('dailyChainLimit', () => {
+  it('returns the default when the env var is unset', () => {
+    const saved = process.env.OMC_DAILY_CHAIN_LIMIT;
+    delete process.env.OMC_DAILY_CHAIN_LIMIT;
+    try { expect(dailyChainLimit()).toBe(DAILY_CHAIN_LIMIT); }
+    finally { if (saved !== undefined) process.env.OMC_DAILY_CHAIN_LIMIT = saved; }
+  });
+
+  it('honours a positive env override', () => {
+    const saved = process.env.OMC_DAILY_CHAIN_LIMIT;
+    process.env.OMC_DAILY_CHAIN_LIMIT = '25';
+    try { expect(dailyChainLimit()).toBe(25); }
+    finally { if (saved !== undefined) process.env.OMC_DAILY_CHAIN_LIMIT = saved; else delete process.env.OMC_DAILY_CHAIN_LIMIT; }
+  });
+
+  it('falls back to the default for invalid values', () => {
+    const saved = process.env.OMC_DAILY_CHAIN_LIMIT;
+    process.env.OMC_DAILY_CHAIN_LIMIT = '-5';
+    try { expect(dailyChainLimit()).toBe(DAILY_CHAIN_LIMIT); }
+    finally { if (saved !== undefined) process.env.OMC_DAILY_CHAIN_LIMIT = saved; else delete process.env.OMC_DAILY_CHAIN_LIMIT; }
   });
 });

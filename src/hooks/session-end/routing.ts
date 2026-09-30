@@ -72,6 +72,8 @@ export interface GateFacts {
   precedentSetting: boolean;
   valueJudgment: boolean;
   mechanicalChecksPassed: boolean;
+  /** Primary-source requirement: the signoff must reference the diff or changed-file list, not the agent's summary. */
+  diffAttached?: boolean;
 }
 
 export type GateVerdict =
@@ -86,7 +88,10 @@ const CRITERIA: ReadonlyArray<[keyof Pick<GateFacts, 'irreversibleOrExternal' | 
 
 export function gradeGate(gate: GateName, facts: GateFacts): GateVerdict {
   if (gate === 'intent-accept') return { kind: 'human', criterion: '保留人闸：价值判断 + 消耗下游整条链，v1 无自动通道' };
-  if (gate === 'review-approve') return { kind: 'human', criterion: '保留人闸：合并不可逆且外部可见（判据一），v1 无黑区' };
+  if (gate === 'review-approve') {
+    if (facts.diffAttached === false) return { kind: 'human', criterion: 'diff 未附：总结是二手源（由被评审方写的），签收必须基于一手源（diff 或变更文件清单）' };
+    return { kind: 'human', criterion: '保留人闸：合并不可逆且外部可见（判据一），v1 无黑区' };
+  }
   for (const [key, label] of CRITERIA) {
     if (facts[key]) return { kind: 'human', criterion: label };
   }

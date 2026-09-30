@@ -23,6 +23,12 @@ import { getOmcRoot } from "../../lib/worktree-paths.js";
 /** Chain-level cap: links per intent per local calendar day (mission brief #8). */
 export const DAILY_CHAIN_LIMIT = 10;
 
+/** Read the effective daily cap: `OMC_DAILY_CHAIN_LIMIT` env override, else the default. */
+export function dailyChainLimit(): number {
+  const raw = Number(process.env.OMC_DAILY_CHAIN_LIMIT);
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : DAILY_CHAIN_LIMIT;
+}
+
 /**
  * intentIds land in lock/stop-marker file names, so the charset is a security
  * boundary: word chars, dot, hyphen only — no separators, no traversal.
@@ -141,7 +147,8 @@ export function acquireChainSlot(
     const usage = readUsageFile(stateRoot);
     const entry = usage[intentId];
     const count = entry && entry.date === dateKey ? entry.count : 0;
-    if (count >= DAILY_CHAIN_LIMIT) {
+    const cap = dailyChainLimit();
+    if (count >= cap) {
       writeStopMarker(
         { intentId, reason: "daily-cap", dateKey, count, stoppedAt: now.toISOString() },
         stateRoot,
@@ -150,7 +157,7 @@ export function acquireChainSlot(
       return {
         allowed: false,
         reason: "daily-cap",
-        detail: `链 ${intentId} 今日已发 ${count} 环（上限 ${DAILY_CHAIN_LIMIT}），链停住；告警留痕 ${stopMarkerPath(intentId)}`,
+        detail: `链 ${intentId} 今日已发 ${count} 环（上限 ${cap}），链停住；告警留痕 ${stopMarkerPath(intentId)}`,
       };
     }
     usage[intentId] = { date: dateKey, count: count + 1 };

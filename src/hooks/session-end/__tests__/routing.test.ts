@@ -136,3 +136,24 @@ describe('normalizeRouteTable', () => {
     expect(normalizeRouteTable({ 'success:other': { stage: 'a', skill: 'b', verify: [] } })?.['success:other']).toEqual({ stage: 'a', skill: 'b' });
   });
 });
+
+describe('gradeGate diff-first', () => {
+  it('review-approve with diffAttached:false grades human with the diff criterion', () => {
+    const facts: GateFacts = { irreversibleOrExternal: false, precedentSetting: false, valueJudgment: false, mechanicalChecksPassed: true, diffAttached: false };
+    const v = gradeGate('review-approve', facts);
+    expect(v.kind).toBe('human');
+    if (v.kind === 'human') expect(v.criterion).toContain('diff');
+  });
+
+  it('review-approve without a diffAttached declaration still grades human (structural)', () => {
+    const facts: GateFacts = { irreversibleOrExternal: false, precedentSetting: false, valueJudgment: false, mechanicalChecksPassed: true };
+    const v = gradeGate('review-approve', facts);
+    expect(v.kind).toBe('human');
+  });
+
+  it('other gates are unaffected by diffAttached', () => {
+    const facts: GateFacts = { irreversibleOrExternal: false, precedentSetting: false, valueJudgment: false, mechanicalChecksPassed: true, diffAttached: true };
+    const v = gradeGate('spec-approve', facts);
+    expect(v.kind).toBe('auto-pass');
+  });
+});
