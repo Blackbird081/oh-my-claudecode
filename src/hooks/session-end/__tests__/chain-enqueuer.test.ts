@@ -38,6 +38,16 @@ function writeProjectRoutes(directory: string, table: Record<string, unknown>): 
   writeFileSync(join(omcDir, 'factory-routes.json'), JSON.stringify(table), 'utf8');
 }
 
+function writeCheckEvidence(directory: string, sessionId: string, checks: Array<{ name: string; passed: boolean }> = [{ name: 'vitest', passed: true }]): void {
+  const dir = join(directory, '.omc', 'state', 'runs', 'evidence');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    join(dir, `${sessionId}-checks.json`),
+    JSON.stringify({ sessionId, checks, completedAt: new Date().toISOString() }),
+    'utf8',
+  );
+}
+
 function readDecisions(directory: string): Array<Record<string, unknown>> {
   const path = join(factoryStateDir(directory), 'chain-decisions.jsonl');
   if (!existsSync(path)) return [];
@@ -180,7 +190,7 @@ describe('planChainEnqueue', () => {
     expect(readChainStopMarker('intent-a', factoryStateDir(dir))).toMatchObject({ reason: 'human-gate:intent-accept' });
   });
 
-  it('an auto-pass gate enqueues and records the signer fact', () => {
+  it('an auto-pass gate with check evidence enqueues and records the signer fact', () => {
     const dir = tempDir();
     writeLedger(dir, 'sess-a', {
       intentId: 'intent-a',
@@ -188,6 +198,7 @@ describe('planChainEnqueue', () => {
       gate: 'spec-approve',
       gateFacts: { irreversibleOrExternal: false, precedentSetting: false, valueJudgment: false, mechanicalChecksPassed: true },
     });
+    writeCheckEvidence(dir, 'sess-a');
     expect(planChainEnqueue(dir, 'sess-a', 'prompt_input_exit')).not.toBeNull();
     expect(readDecisions(dir)).toEqual(expect.arrayContaining([
       expect.objectContaining({ decision: 'auto-pass', gate: 'spec-approve' }),

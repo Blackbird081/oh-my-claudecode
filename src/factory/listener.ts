@@ -4,7 +4,8 @@
  * Resident intake daemon: transport adapters (smee/cloudflared/direct) live
  * outside the OMC boundary — the daemon only receives already-unpacked
  * webhook events as POSTs. It verifies the HMAC signature, enforces the repo
- * whitelist, applies the intake label gate, and routes through the shared
+ * whitelist, applies the intake label gate (tracker issues) or the completed
+ * CI failure gate (check-suite webhooks), and routes through the shared
  * routing pure function (T1 seam). v1 processes events serially.
  */
 
@@ -14,12 +15,15 @@ import { appendFileSync, mkdirSync, writeFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { decideNextStage, type ChainDirective, type RouteTable } from '../hooks/session-end/routing.js';
 import { acquireChainSlot, releaseChainSlot } from '../hooks/session-end/guardrails.js';
-import { defaultSpawnFn, factoryLinkArgv, type SpawnContext } from '../hooks/session-end/spawn-next.js';
+import { defaultSpawnFn, factoryLinkArgv, type SpawnContext, type SpawnNextTracker } from '../hooks/session-end/spawn-next.js';
 import { DEFAULT_STALL_THRESHOLD_MS, detectStalledLinks, flagStall } from './watchdog.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
 
 export const INTAKE_LABEL = 'intake';
 export const INTAKE_ROUTE_TABLE: RouteTable = { 'success:intake': { stage: 'intent', skill: 'intent' } };
+
+/** CI check-suite failures feed the diagnose stage of the same chain. */
+export const CI_ROUTE_TABLE: RouteTable = { 'failed:ci': { stage: 'diagnose', skill: 'diagnose' } };
 
 /** GitHub issue webhook payload subset the daemon needs. */
 export interface TrackerEvent {
@@ -27,6 +31,13 @@ export interface TrackerEvent {
   repository?: { full_name?: string };
   label?: { name?: string };
   issue?: { number?: number; title?: string; html_url?: string; labels?: Array<{ name?: string }> };
+}
+
+/** GitHub check-run webhook payload subset the daemon needs (CI failure intake). */
+export interface CheckRunEvent {
+  action?: string;
+  check_suite?: { conclusion?: string; head_branch?: string };
+  repository?: { full_name?: string };
 }
 
 export function verifySignature(secret: string, rawBody: string, signatureHeader: string | undefined): boolean {
@@ -62,9 +73,37 @@ export function routeTrackerEvent(
   return { kind: 'routed', directive, issueNumber: event.issue?.number, issueUrl: event.issue?.html_url };
 }
 
+/**
+ * Pure CI intake decision: whitelist -> completed/failure gate -> shared
+ * routing seam. Same outcome shape as routeTrackerEvent so the listener
+ * dispatches both webhook kinds uniformly.
+ */
+export function routeCheckFailure(
+  event: CheckRunEvent,
+  whitelist: ReadonlyArray<string>,
+  table: RouteTable = CI_ROUTE_TABLE,
+): RouteOutcome {
+  const repo = event.repository?.full_name;
+  if (!repo || !whitelist.includes(repo)) {
+    return { kind: 'rejected', status: 403, reason: `repository outside whitelist: ${repo ?? '(missing)'}` };
+  }
+  const failed = event.action === 'completed' && event.check_suite?.conclusion === 'failure';
+  if (!failed) {
+    return { kind: 'discarded', reason: `not a failed check run (action: ${event.action ?? '?'}, conclusion: ${event.check_suite?.conclusion ?? '?'})` };
+  }
+  const directive = decideNextStage('failed', 'ci', table);
+  if (!directive) return { kind: 'discarded', reason: 'route table has no ci directive' };
+  return { kind: 'routed', directive };
+}
+
 export function buildIntentPrompt(directive: ChainDirective, issueNumber?: number, issueUrl?: string): string {
   const target = issueUrl ?? `(issue #${issueNumber ?? '?'})`;
   return `/${directive.skill} 处理 tracker 进货：${target}。追问以 issue 评论回贴；回写契约：docs/intents/<slug>/ = 内容，issue 评论 = 记录指针，标签转 needs-review。`;
+}
+
+export function buildDiagnosePrompt(directive: ChainDirective, repo: string, branch?: string): string {
+  const target = branch ? `${repo}@${branch}` : repo;
+  return `/${directive.skill} 处理 CI 失败：${target}。诊断失败原因并尝试修复；无法自动修复时留下诊断结论并停住（needs-human）。`;
 }
 
 const ISSUE_URL_PATTERN = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/issues\/\d+$/;
@@ -131,7 +170,56 @@ function scheduleStallCheck(cwd: string, session: string, deps: ListenerDeps): v
   timer.unref();
 }
 
-/** Orchestrates one event: audit rejections, discard noise, spawn routed sessions. */
+/** Shared spawn stage: serial guardrail -> pre-written ledger -> AFK link -> stall check. */
+interface ChainLinkRequest {
+  intentId: string;
+  directive: ChainDirective;
+  prompt: string;
+  /** Tracker fields copied into the pre-written ledger (CI failures carry none). */
+  tracker?: SpawnNextTracker;
+  /** Extra audit fields for the routed record (issue pointer or CI target). */
+  routedAuditFields?: Record<string, unknown>;
+  config: ListenerConfig;
+  deps: ListenerDeps;
+  audit: (record: Record<string, unknown>) => void;
+}
+
+function spawnChainLink(req: ChainLinkRequest): EventResult {
+  const slot = acquireChainSlot(req.intentId, join(getOmcRoot(req.config.cwd), 'state', 'factory'));
+  if (!slot.allowed) {
+    req.audit({ kind: 'discarded', reason: `guardrail: ${slot.reason}`, detail: slot.detail, intentId: req.intentId });
+    return { status: 204, kind: 'discarded', detail: `guardrail ${slot.reason}: ${slot.detail}` };
+  }
+
+  const nextSessionId = randomUUID();
+  const args = factoryLinkArgv(req.prompt, nextSessionId);
+  const spawnCtx = { cwd: req.config.cwd };
+  try {
+    // Pre-write the first chain ledger so the spawned session's SessionEnd
+    // finds it (route table falls back to the project's factory-routes.json).
+    // Best-effort: a ledger write failure must not block spawning the link.
+    try {
+      const factoryDir = join(getOmcRoot(req.config.cwd), 'state', 'factory');
+      mkdirSync(factoryDir, { recursive: true });
+      writeFileSync(join(factoryDir, `chain-${nextSessionId}.json`), JSON.stringify({
+        intentId: req.intentId,
+        stage: req.directive.stage,
+        ...(req.tracker ? { tracker: req.tracker } : {}),
+      }, null, 2), 'utf8');
+    } catch (error) {
+      req.audit({ kind: 'discarded', reason: 'ledger write failed', detail: error instanceof Error ? error.message : String(error), session: nextSessionId });
+    }
+    if (req.deps.spawner) req.deps.spawner('claude', args, spawnCtx);
+    else defaultSpawnFn('claude', args, spawnCtx);
+    scheduleStallCheck(req.config.cwd, nextSessionId, req.deps);
+  } finally {
+    releaseChainSlot(slot);
+  }
+  req.audit({ kind: 'routed', stage: req.directive.stage, skill: req.directive.skill, ...req.routedAuditFields, session: nextSessionId });
+  return { status: 202, kind: 'accepted', detail: `spawned ${req.directive.stage} session (${req.directive.skill})` };
+}
+
+/** Orchestrates one tracker event: audit rejections, discard noise, spawn routed sessions. */
 export function processEvent(event: TrackerEvent, config: ListenerConfig, deps: ListenerDeps = {}): EventResult {
   const audit = deps.audit ?? defaultAudit(config.cwd);
   const outcome = routeTrackerEvent(event, config.whitelist);
@@ -151,42 +239,45 @@ export function processEvent(event: TrackerEvent, config: ListenerConfig, deps: 
   }
 
   const intentId = `${repo}#${outcome.issueNumber ?? 0}`.replace(/[^\w.-]/g, '-');
-  const slot = acquireChainSlot(intentId, join(getOmcRoot(config.cwd), 'state', 'factory'));
-  if (!slot.allowed) {
-    audit({ kind: 'discarded', reason: `guardrail: ${slot.reason}`, detail: slot.detail, intentId });
-    return { status: 204, kind: 'discarded', detail: `guardrail ${slot.reason}: ${slot.detail}` };
+  return spawnChainLink({
+    intentId,
+    directive: outcome.directive,
+    prompt: buildIntentPrompt(outcome.directive, outcome.issueNumber, outcome.issueUrl),
+    tracker: outcome.issueNumber !== undefined
+      ? { repo, issue: outcome.issueNumber, nextLabel: 'needs-review', failedLabel: 'failed' }
+      : undefined,
+    routedAuditFields: { issue: outcome.issueUrl ?? outcome.issueNumber },
+    config,
+    deps,
+    audit,
+  });
+}
+
+/** Orchestrates one CI check-suite event: same guardrail/ledger/AFK flow, no tracker. */
+export function processCheckFailureEvent(event: CheckRunEvent, config: ListenerConfig, deps: ListenerDeps = {}): EventResult {
+  const audit = deps.audit ?? defaultAudit(config.cwd);
+  const outcome = routeCheckFailure(event, config.whitelist);
+
+  if (outcome.kind === 'rejected') {
+    audit({ kind: 'rejected', status: outcome.status, reason: outcome.reason });
+    return { status: outcome.status, kind: 'rejected', detail: outcome.reason };
+  }
+  if (outcome.kind === 'discarded') {
+    return { status: 204, kind: 'discarded', detail: outcome.reason };
   }
 
-  const prompt = buildIntentPrompt(outcome.directive, outcome.issueNumber, outcome.issueUrl);
-  const nextSessionId = randomUUID();
-  const args = factoryLinkArgv(prompt, nextSessionId);
-  const spawnCtx = { cwd: config.cwd };
-  const tracker = outcome.issueNumber !== undefined
-    ? { repo, issue: outcome.issueNumber, nextLabel: 'needs-review', failedLabel: 'failed' }
-    : undefined;
-  try {
-    // Pre-write the first chain ledger so the spawned session's SessionEnd
-    // finds it (route table falls back to the project's factory-routes.json).
-    // Best-effort: a ledger write failure must not block spawning the link.
-    try {
-      const factoryDir = join(getOmcRoot(config.cwd), 'state', 'factory');
-      mkdirSync(factoryDir, { recursive: true });
-      writeFileSync(join(factoryDir, `chain-${nextSessionId}.json`), JSON.stringify({
-        intentId,
-        stage: outcome.directive.stage,
-        ...(tracker ? { tracker } : {}),
-      }, null, 2), 'utf8');
-    } catch (error) {
-      audit({ kind: 'discarded', reason: 'ledger write failed', detail: error instanceof Error ? error.message : String(error), session: nextSessionId });
-    }
-    if (deps.spawner) deps.spawner('claude', args, spawnCtx);
-    else defaultSpawnFn('claude', args, spawnCtx);
-    scheduleStallCheck(config.cwd, nextSessionId, deps);
-  } finally {
-    releaseChainSlot(slot);
-  }
-  audit({ kind: 'routed', stage: outcome.directive.stage, skill: outcome.directive.skill, issue: outcome.issueUrl ?? outcome.issueNumber, session: nextSessionId });
-  return { status: 202, kind: 'accepted', detail: `spawned ${outcome.directive.stage} session (${outcome.directive.skill})` };
+  const repo = event.repository?.full_name ?? '';
+  const branch = event.check_suite?.head_branch;
+  const intentId = `${repo}:ci:${branch ?? 'unknown'}`.replace(/[^\w.-]/g, '-');
+  return spawnChainLink({
+    intentId,
+    directive: outcome.directive,
+    prompt: buildDiagnosePrompt(outcome.directive, repo, branch),
+    routedAuditFields: { target: branch ? `${repo}@${branch}` : repo },
+    config,
+    deps,
+    audit,
+  });
 }
 
 function pidFilePath(cwd: string): string {
@@ -264,16 +355,24 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, config: 
     return;
   }
 
-  let event: TrackerEvent;
+  let event: TrackerEvent | CheckRunEvent;
   try {
-    event = JSON.parse(raw) as TrackerEvent;
+    event = JSON.parse(raw) as TrackerEvent | CheckRunEvent;
   } catch {
     res.writeHead(400, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ error: 'invalid JSON' }));
     return;
   }
 
-  const result = processEvent(event, config, deps);
+  // A body carrying check_suite is a CI check-run webhook; everything else is
+  // tracker issue intake.
+  const result = hasCheckSuite(event)
+    ? processCheckFailureEvent(event, config, deps)
+    : processEvent(event, config, deps);
   res.writeHead(result.status, { 'content-type': 'application/json' });
   res.end(JSON.stringify(result));
+}
+
+function hasCheckSuite(event: TrackerEvent | CheckRunEvent): event is CheckRunEvent {
+  return (event as Partial<CheckRunEvent>).check_suite !== undefined;
 }
