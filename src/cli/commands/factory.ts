@@ -7,14 +7,22 @@
  * work itself (HMAC verification, repo whitelist, intake label gate, routing
  * through the shared pure function, headless intent session spawn).
  *
+ * `omc factory init` — seeds the project route table (`.omc/factory-routes.json`,
+ * the single source of truth the SessionEnd chain enqueuer reads) and validates
+ * the factory prerequisites. Default seeds the narrow starter loop; --no-narrow
+ * seeds the full-pipeline widening template. Never overwrites without --force.
+ *
  * Liveness: pid file at <omc root>/state/factory-listener.json (SessionStart
  * supervision reads it) plus a GET /status endpoint on the listening port.
  */
 
 import { Command } from 'commander';
 import chalk from 'chalk';
-import { resolve } from 'path';
-import { startListener, stopListener } from '../../factory/listener.js';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { join, resolve } from 'path';
+import { INTAKE_ROUTE_TABLE, startListener, stopListener } from '../../factory/listener.js';
+import { type RouteTable } from '../../hooks/session-end/routing.js';
+import { getOmcRoot } from '../../lib/worktree-paths.js';
 
 export function factoryCommand(): Command {
   const cmd = new Command('factory');
@@ -56,5 +64,104 @@ export function factoryCommand(): Command {
       });
     });
 
+  cmd
+    .command('init')
+    .description('Seed the project route table .omc/factory-routes.json (the chain-routing source of truth) and validate factory prerequisites')
+    // Negatable option: Commander defaults `narrow` to true, so the default
+    // seed is the narrow starter loop; --no-narrow seeds the widening template.
+    .option('--no-narrow', 'seed the full-pipeline widening template (intake -> intent -> launch -> diagnose) instead of the narrow starter loop')
+    .option('--cwd <dir>', 'project directory to seed (defaults to the working directory)', process.cwd())
+    .option('--force', 'replace an existing route table (read it first — it is the routing source of truth)', false)
+    .action((options: { narrow?: boolean; cwd: string; force?: boolean }) => {
+      const result = runFactoryInit({ narrow: options.narrow, cwd: options.cwd, force: options.force });
+      if (result.exitCode === 0) {
+        console.log(chalk.green(result.message));
+      } else {
+        console.error(chalk.red(result.message));
+        process.exitCode = result.exitCode;
+      }
+    });
+
   return cmd;
+}
+
+/**
+ * Narrow starter route table: exactly the listener's INTAKE_ROUTE_TABLE — the
+ * single intake -> intent hop. Everything after a completed intent session
+ * halts (`no-route`) until the project deliberately widens the table.
+ */
+export function buildRouteTableNarrow(): RouteTable {
+  return { ...INTAKE_ROUTE_TABLE };
+}
+
+/**
+ * Full-pipeline widening template: a documented example widening the starter
+ * loop into the intent -> launch -> diagnose progression. Keys are
+ * `outcome:reason` pairs (the listener's intake label event, or the ending
+ * session's outcome + hook reason); values name the next stage/skill. This is
+ * a starting point to edit per project — a missing route halts the chain, and
+ * `skill: "stop"` declares a terminal stage.
+ */
+export function buildRouteTableFull(): RouteTable {
+  return {
+    'success:intake': { stage: 'intent', skill: 'intent' },
+    'success:intent': { stage: 'launch', skill: 'launch' },
+    'success:launch': { stage: 'diagnose', skill: 'diagnose' },
+  };
+}
+
+/**
+ * Factory prerequisites, checked loudly before anything is written:
+ * harbor needs the OMC state root (`.omc/state/`) and the shipyard layout
+ * needs `docs/design/`.
+ */
+export function validateFactoryPrerequisites(cwd: string): { ok: boolean; missing: string[] } {
+  const missing: string[] = [];
+  if (!existsSync(join(getOmcRoot(cwd), 'state'))) missing.push('.omc/state/');
+  if (!existsSync(join(cwd, 'docs', 'design'))) missing.push('docs/design/');
+  return { ok: missing.length === 0, missing };
+}
+
+export interface FactoryInitResult {
+  exitCode: number;
+  message: string;
+}
+
+/**
+ * `omc factory init`: seed `.omc/factory-routes.json` — narrow starter table
+ * by default, full widening template with narrow:false. Refuses loudly when
+ * prerequisites are missing and never overwrites an existing table without
+ * force (the SessionEnd chain enqueuer reads that file as the single source
+ * of truth).
+ */
+export function runFactoryInit(options: { narrow?: boolean; cwd?: string; force?: boolean } = {}): FactoryInitResult {
+  const cwd = resolve(options.cwd ?? process.cwd());
+  const routesPath = join(getOmcRoot(cwd), 'factory-routes.json');
+
+  const prerequisites = validateFactoryPrerequisites(cwd);
+  if (!prerequisites.ok) {
+    return {
+      exitCode: 1,
+      message: `factory init refused: missing prerequisites (${prerequisites.missing.join(', ')}). Harbor needs .omc/state/ (run an OMC session or omc setup first); the shipyard layout needs docs/design/. Point --cwd at the project root.`,
+    };
+  }
+  if (existsSync(routesPath) && !options.force) {
+    return {
+      exitCode: 1,
+      message: `factory init refused: ${routesPath} already exists and the project route table is never overwritten. Read it first, then pass --force to replace it.`,
+    };
+  }
+  const table = options.narrow === false ? buildRouteTableFull() : buildRouteTableNarrow();
+  try {
+    mkdirSync(join(routesPath, '..'), { recursive: true });
+    writeFileSync(routesPath, `${JSON.stringify(table, null, 2)}\n`, 'utf8');
+  } catch (error) {
+    return { exitCode: 1, message: `factory init failed: cannot write ${routesPath}: ${(error as Error).message}` };
+  }
+  const mode = options.narrow === false ? 'full-pipeline widening template' : 'narrow starter table';
+  const routes = Object.entries(table).map(([key, directive]) => `${key} -> ${directive.stage}/${directive.skill}`).join('; ');
+  return {
+    exitCode: 0,
+    message: `factory init wrote ${routesPath} (${mode}): ${routes}. The SessionEnd chain enqueuer reads this file as the single source of truth — a missing route halts the chain, and skill "stop" marks a terminal stage.`,
+  };
 }

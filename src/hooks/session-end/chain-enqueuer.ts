@@ -14,6 +14,7 @@ import * as fs from 'fs';
 import { join } from 'path';
 import { decideNextStage, gradeGate, normalizeRouteTable, type ChainOutcome, type GateFacts, type GateName, type RouteTable } from './routing.js';
 import { acquireChainSlot, releaseChainSlot, INTENT_ID_PATTERN } from './guardrails.js';
+import { verifyCheckEvidence } from './check-evidence.js';
 import { validateChainFields, LABEL_PATTERN, type SpawnNextChain, type SpawnNextTracker } from './spawn-next.js';
 import { getOmcRoot, validateSessionId } from '../../lib/worktree-paths.js';
 
@@ -174,7 +175,14 @@ export function planChainEnqueue(directory: string, sessionId: string, reason: s
     }
 
     if (ledger.gate) {
-      const verdict = gradeGate(ledger.gate, ledger.gateFacts ?? DEFAULT_GATE_FACTS);
+      const declared = ledger.gateFacts ?? DEFAULT_GATE_FACTS;
+      // A declared mechanical pass must be backed by check evidence on disk;
+      // missing or failing evidence overrides the flag to false (conservative:
+      // an unverified gate grades human, same as an undeclared one).
+      const facts = declared.mechanicalChecksPassed === true && !verifyCheckEvidence(getOmcRoot(directory), sessionId)
+        ? { ...declared, mechanicalChecksPassed: false }
+        : declared;
+      const verdict = gradeGate(ledger.gate, facts);
       if (verdict.kind === 'human') {
         record('human-gate', { gate: ledger.gate, criterion: verdict.criterion });
         writeHaltMarker(directory, intentId, `human-gate:${ledger.gate}`);
