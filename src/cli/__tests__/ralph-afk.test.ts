@@ -55,6 +55,14 @@ describe('ralphAfkArgv', () => {
     expect(tools).toContain('Bash(git status)');
     expect(tools).not.toContain('whoami');
   });
+
+  it('keeps the full verify budget on top of the read-only git set', () => {
+    const verify = Array.from({ length: 10 }, (_, i) => `npm run check${i}`);
+    const argv = ralphAfkArgv('task', verify, 'sess-z');
+    const tools = argv[argv.indexOf('--allowedTools') + 1];
+    expect(tools).toContain('Bash(git merge-base)');
+    for (const command of verify) expect(tools).toContain(`Bash(${command})`);
+  });
 });
 
 describe('materializeRalphSkill', () => {
@@ -100,6 +108,23 @@ describe('omc ralph afk command', () => {
       expect(readFileSync(join(dir, '.claude', 'skills', 'ralph', 'SKILL.md'), 'utf8')).toContain('name: ralph');
     } finally {
       process.chdir(previousCwd);
+    }
+  });
+
+  it('refuses more --verify commands than the budget instead of dropping them', async () => {
+    const program = new Command();
+    program.exitOverride();
+    ralphCommand(program);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const verifyArgs = Array.from({ length: 11 }, (_, i) => ['--verify', `npm run check${i}`]).flat();
+    try {
+      await program.parseAsync(['ralph', 'afk', 't', ...verifyArgs], { from: 'user' });
+      expect(spawnMock.defaultSpawnFn).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
+      expect(errorSpy.mock.calls[0][0]).toContain('at most 10 --verify');
+    } finally {
+      process.exitCode = undefined;
+      errorSpy.mockRestore();
     }
   });
 });

@@ -78,12 +78,23 @@ export const AFK_SPAWN_FLAGS = [
  * they are re-checked against the routing pattern here rather than trusted from
  * whatever route table produced the directive.
  */
-export function factoryLinkArgv(prompt: string, sessionId: string, verifyCommands: readonly string[] = []): string[] {
-  if (verifyCommands.length === 0) return ['-p', prompt, '--session-id', sessionId, ...AFK_SPAWN_FLAGS];
+export function factoryLinkArgv(
+  prompt: string,
+  sessionId: string,
+  verifyCommands: readonly string[] = [],
+  fixedBashCommands: readonly string[] = [],
+): string[] {
+  if (verifyCommands.length === 0 && fixedBashCommands.length === 0) {
+    return ['-p', prompt, '--session-id', sessionId, ...AFK_SPAWN_FLAGS];
+  }
+  const isValid = (command: string) => command.length <= MAX_VERIFY_COMMAND_LENGTH && VERIFY_COMMAND_PATTERN.test(command);
+  // fixedBashCommands are caller-owned constants (e.g. ralph's read-only git
+  // set); only the user/route-declared verify list counts against the cap.
   const allowedTools = [
     AFK_ALLOWED_TOOLS,
+    ...fixedBashCommands.filter(isValid).map((command) => `Bash(${command})`),
     ...verifyCommands
-      .filter((command) => command.length <= MAX_VERIFY_COMMAND_LENGTH && VERIFY_COMMAND_PATTERN.test(command))
+      .filter(isValid)
       .slice(0, MAX_VERIFY_COMMANDS)
       .map((command) => `Bash(${command})`),
   ].join(',');

@@ -27,16 +27,17 @@ import { join } from 'path';
 import type { Command } from 'commander';
 import { getSkillsDir } from '../../features/builtin-skills/skills.js';
 import { defaultSpawnFn, factoryLinkArgv } from '../../hooks/session-end/spawn-next.js';
+import { MAX_VERIFY_COMMANDS } from '../../hooks/session-end/routing.js';
 
 /** Read-only git commands ralph's stale-PRD detection and gitGrep checks need. */
 const RALPH_AFK_READONLY_GIT = ['git status', 'git log', 'git diff', 'git rev-parse', 'git show', 'git merge-base'];
 
 /** Args (command excluded) for one headless AFK ralph launch. */
 export function ralphAfkArgv(task: string, verifyCommands: readonly string[] = [], sessionId: string = randomUUID()): string[] {
-  // The argv builder's third parameter is the extra-Bash-entry list; ralph's
-  // read-only git needs ride the same validated append path as --verify.
+  // ralph's read-only git set rides the fixed-entry slot so it never eats
+  // into the MAX_VERIFY_COMMANDS budget of the declared --verify list.
   const prompt = `/ralph --no-deslop ${task}`;
-  return factoryLinkArgv(prompt, sessionId, [...RALPH_AFK_READONLY_GIT, ...verifyCommands]);
+  return factoryLinkArgv(prompt, sessionId, verifyCommands, RALPH_AFK_READONLY_GIT);
 }
 
 export type SkillMaterialization = { status: 'created'; path: string } | { status: 'present' | 'diverged'; path: string };
@@ -80,6 +81,11 @@ Examples:
   (.claude/skills/ralph) first — add it to .gitignore if the repo does not
   already ignore .claude/.`)
     .action((task: string, options: { verify: string[] }) => {
+      if ((options.verify ?? []).length > MAX_VERIFY_COMMANDS) {
+        console.error(`ralph afk refused: at most ${MAX_VERIFY_COMMANDS} --verify commands are allowed (got ${options.verify.length})`);
+        process.exitCode = 1;
+        return;
+      }
       let materialized: SkillMaterialization | null;
       try {
         materialized = materializeRalphSkill(process.cwd());
