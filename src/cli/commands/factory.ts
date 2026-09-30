@@ -21,8 +21,28 @@ import chalk from 'chalk';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join, resolve } from 'path';
 import { INTAKE_ROUTE_TABLE, startListener, stopListener } from '../../factory/listener.js';
+import { readChainStatus, type ChainStatus } from '../../factory/status.js';
 import { type RouteTable } from '../../hooks/session-end/routing.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
+
+function renderChainStatus(status: ChainStatus): string {
+  const lines: string[] = [];
+  lines.push(`链状态 ${status.directory}`);
+  lines.push(`路由表（.omc/factory-routes.json，单一权威）: ${status.routeKeys.length} 键${status.routeKeys.length > 0 ? ` — ${status.routeKeys.join(', ')}` : ''}`);
+  lines.push(`活跃 ledger: ${status.activeLedgers}`);
+  lines.push(`意图（${status.intents.length}）:`);
+  if (status.intents.length === 0) lines.push('  （无决策记录）');
+  for (const intent of status.intents) {
+    const last = intent.lastDecision ? `${intent.lastDecision} @ ${intent.lastDecisionAt ?? '?'}` : '无';
+    const stopped = intent.stopped ? `  停链[${intent.stopped.reason}]` : '';
+    lines.push(`  ${intent.intentId}  决策 ${intent.decisionCount}  末次 ${last}${stopped}`);
+  }
+  lines.push(`停滞环（阈值 30min 未推进）: ${status.stalled.length}`);
+  for (const stall of status.stalled) {
+    lines.push(`  ${stall.intentId} stage=${stall.stage} 停滞 ${Math.round(stall.stalledForMs / 60_000)}min session=${stall.session}`);
+  }
+  return lines.join('\n');
+}
 
 export function factoryCommand(): Command {
   const cmd = new Command('factory');
@@ -80,6 +100,21 @@ export function factoryCommand(): Command {
         console.error(chalk.red(result.message));
         process.exitCode = result.exitCode;
       }
+    });
+
+  // Read-only audit view of this project's chain: decision trail, stop
+  // markers, live ledgers, stalled links (D2). Never writes.
+  cmd
+    .command('status')
+    .description('Summarize this project\'s chain decisions, stop markers, and stalled links (read-only)')
+    .option('--json', 'Output as JSON')
+    .action((options: { json?: boolean }) => {
+      const status = readChainStatus(process.cwd());
+      if (options.json) {
+        console.log(JSON.stringify(status, null, 2));
+        return;
+      }
+      console.log(renderChainStatus(status));
     });
 
   return cmd;

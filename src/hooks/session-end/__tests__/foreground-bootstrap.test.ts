@@ -8,19 +8,32 @@
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { execFileSync } from 'child_process';
 
 vi.mock('../worker.js', () => ({ spawnSessionEndWorker: vi.fn(() => true) }));
+vi.mock('../cleanup-manifest.js', async () => {
+  const actual = await vi.importActual<typeof import('../cleanup-manifest.js')>('../cleanup-manifest.js');
+  return { ...actual, prepareCoreManifest: vi.fn(actual.prepareCoreManifest) };
+});
 
 import { publishSessionEndBootstrap } from '../foreground-bootstrap.js';
-import { readSessionEndJob } from '../cleanup-manifest.js';
+import { prepareCoreManifest, readSessionEndJob } from '../cleanup-manifest.js';
 import { factoryStateDir } from '../chain-enqueuer.js';
 import { spawnSessionEndWorker } from '../worker.js';
 
 const tempRoots: string[] = [];
+
+function chainDecisions(directory: string): Array<Record<string, unknown>> {
+  try {
+    return readFileSync(join(factoryStateDir(directory), 'chain-decisions.jsonl'), 'utf8')
+      .split('\n').filter((line) => line.trim()).map((line) => JSON.parse(line) as Record<string, unknown>);
+  } catch {
+    return [];
+  }
+}
 
 function tempDir(): string {
   const dir = mkdtempSync(join(tmpdir(), 'omc-foreground-bootstrap-'));
@@ -80,5 +93,50 @@ describe('publishSessionEndBootstrap chain wiring (plugin session-end path)', ()
     expect(manifest).not.toBeNull();
     expect(manifest?.actions['spawn-next']?.payload?.chain).toBeUndefined();
     expect(spawnSessionEndWorker).toHaveBeenCalled();
+  });
+
+  it('records manifest-unavailable in the decision trail when the enqueued chain gets no manifest', async () => {
+    const dir = tempDir();
+    writeLedger(dir, 'sess-c', { intentId: 'intent-c' });
+    mkdirSync(join(dir, '.omc'), { recursive: true });
+    writeFileSync(join(dir, '.omc', 'factory-routes.json'), JSON.stringify({
+      'success:*': { stage: 'review', skill: 'code-review' },
+    }), 'utf8');
+    vi.mocked(prepareCoreManifest).mockReturnValueOnce(null as never);
+
+    await publishSessionEndBootstrap(bootstrapInput(dir, 'sess-c'));
+
+    // The enqueuer already said 'enqueued'; the phantom enqueue must be named.
+    const decisions = chainDecisions(dir);
+    expect(decisions.map((record) => record.decision)).toEqual(['enqueued', 'manifest-unavailable']);
+    expect(decisions.at(-1)).toMatchObject({ sessionId: 'sess-c', intentId: 'intent-c' });
+    expect(spawnSessionEndWorker).not.toHaveBeenCalled();
+  });
+
+  it('records worker-spawn-failed when the manifest exists but the detached worker never starts', async () => {
+    const dir = tempDir();
+    writeLedger(dir, 'sess-d', { intentId: 'intent-d' });
+    mkdirSync(join(dir, '.omc'), { recursive: true });
+    writeFileSync(join(dir, '.omc', 'factory-routes.json'), JSON.stringify({
+      'success:*': { stage: 'review', skill: 'code-review' },
+    }), 'utf8');
+    vi.mocked(spawnSessionEndWorker).mockReturnValueOnce(false);
+
+    await publishSessionEndBootstrap(bootstrapInput(dir, 'sess-d'));
+
+    const decisions = chainDecisions(dir);
+    expect(decisions.map((record) => record.decision)).toEqual(['enqueued', 'worker-spawn-failed']);
+    expect(decisions.at(-1)).toMatchObject({ sessionId: 'sess-d', intentId: 'intent-d' });
+  });
+
+  it('stays silent when there is no chain to lose', async () => {
+    const dir = tempDir();
+    vi.mocked(prepareCoreManifest).mockReturnValueOnce(null as never);
+    vi.mocked(spawnSessionEndWorker).mockReturnValueOnce(false);
+
+    await publishSessionEndBootstrap(bootstrapInput(dir, 'sess-e'));
+
+    // No ledger means no chain; a null manifest or failed worker costs nothing.
+    expect(chainDecisions(dir)).toEqual([]);
   });
 });
