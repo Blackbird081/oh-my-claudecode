@@ -61,8 +61,14 @@ function uriKey(uri: string): string {
     return uri;
   }
 
-  // Decode percent-encoded characters to handle %3A/%3a (colon)
-  let decoded = decodeURIComponent(uri);
+  // Decode percent-encoded characters to handle %3A/%3a (colon). A malformed
+  // escape must not throw out of the notification handler: keep it verbatim.
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(uri);
+  } catch {
+    decoded = uri;
+  }
 
   // For Windows paths like file:///c:/Users/... normalize drive letter to uppercase
   // Match: file:///<single_char>:/ and uppercase the drive letter
