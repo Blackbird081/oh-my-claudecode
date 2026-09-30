@@ -519,11 +519,19 @@ describe('Ralph PRD Module', () => {
 
 describe('PRD run-field preservation (repoQualityClass / feedbackCommands)', () => {
   let dir: string;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
   beforeEach(() => {
     dir = join(tmpdir(), `ralph-prd-fields-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    process.env.HOME = dir;
+    process.env.USERPROFILE = dir;
     mkdirSync(dir, { recursive: true });
   });
   afterEach(() => {
+    if (previousHome === undefined) delete process.env.HOME; else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = previousUserProfile;
     rmSync(dir, { recursive: true, force: true });
   });
 
