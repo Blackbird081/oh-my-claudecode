@@ -4,7 +4,7 @@ import { randomUUID } from 'crypto';
 import { spawn, type SpawnOptions } from 'child_process';
 import { decideNextStage, VERIFY_COMMAND_PATTERN, MAX_VERIFY_COMMAND_LENGTH, type ChainOutcome, type RouteTable } from './routing.js';
 import { getOmcRoot, validateSessionId } from '../../lib/worktree-paths.js';
-import { quoteForCmd, isNativeWindowsShell } from '../../cli/tmux-utils.js';
+import { quoteForCmd } from '../../cli/tmux-utils.js';
 
 export interface SpawnNextTracker {
   repo: string;
@@ -198,6 +198,14 @@ export function executeSpawnNext(chain: SpawnNextChain, directory: string, spawn
  * neutralizes both issues while maintaining proper argument escaping via
  * quoteForCmd (which doubles quotes and percent signs, rejecting CR/LF).
  *
+ * The .cmd-shim constraint is a Windows PLATFORM fact, not a shell fact: gate
+ * on process.platform, never on shell detection. Gating on the shell made
+ * Git Bash (MSYSTEM set) skip the cmd.exe route and spawn the .cmd shim
+ * directly, which CreateProcess cannot exec — the child died instantly and
+ * silently (stdio ignored), so `omc ralph afk` under Git Bash launched
+ * nothing. Factory links dodged this only by accident: the detached worker
+ * runs with a filtered env that drops MSYSTEM.
+ *
  * detached:true is win32-hostile here (dogfood bisect: cmd.exe children
  * spawned detached exit 1 before writing a transcript), so it is only
  * applied off-win32. Orphaning still holds: Windows children survive
@@ -208,7 +216,7 @@ export function defaultSpawnFn(command: string, args: string[], ctx?: SpawnConte
     process.platform === 'win32'
       ? { windowsHide: true, cwd: ctx?.cwd }
       : { detached: true, windowsHide: true, cwd: ctx?.cwd };
-  if (isNativeWindowsShell() && command === 'claude') {
+  if (process.platform === 'win32' && command === 'claude') {
     const pIdx = args.indexOf('-p');
     const inlinePrompt = pIdx !== -1 && pIdx + 1 < args.length ? args[pIdx + 1] : undefined;
     if (inlinePrompt !== undefined && !inlinePrompt.startsWith('--')) {
@@ -234,7 +242,7 @@ export function defaultSpawnFn(command: string, args: string[], ctx?: SpawnConte
   // gh is a .cmd shim on Windows too. Use --body-file - for comment bodies to
   // avoid cmd.exe's quote toggle and %VAR% expansion on free-form text; properly
   // quote remaining argv using quoteForCmd.
-  if (isNativeWindowsShell() && command === 'gh') {
+  if (process.platform === 'win32' && command === 'gh') {
     const bodyIdx = args.indexOf('--body');
     if (bodyIdx !== -1 && bodyIdx + 1 < args.length) {
       const bodyText = args[bodyIdx + 1];

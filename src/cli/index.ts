@@ -44,6 +44,7 @@ import {
   waitDetectCommand
 } from './commands/wait.js';
 import { doctorConflictsCommand } from './commands/doctor-conflicts.js';
+import { ralphCommand } from './commands/ralph.js';
 import { doctorTeamRoutingCommand } from './commands/doctor-team-routing.js';
 import { capabilitiesCheckCommand, capabilitiesLockCommand } from './commands/capabilities.js';
 import { sessionSearchCommand } from './commands/session-search.js';
@@ -1284,6 +1285,9 @@ Examples:
     const exitCode = await doctorConflictsCommand(options);
     process.exit(exitCode);
   });
+
+// Headless AFK ralph launcher (factory AFK profile + declared verify commands).
+ralphCommand(program);
 
 /**
  * Setup command - Official CLI entry point for omc-setup
