@@ -4,26 +4,6 @@
   "owner": "Yeachan-Heo",
   "authorizations": [
     {
-      "pullNumber": 4200,
-      "targetRef": "main",
-      "mergeBaseSha": "134f4c96e2bdc0e10a0ee6bbbd413ded0d3c57b6",
-      "headSha": "624380ced75db81df273b0f9fe3584e96994d00a",
-      "owner": "Yeachan-Heo",
-      "expiresAt": "2026-12-31T23:59:59.999Z",
-      "generatedDelta": {
-        "count": 1,
-        "sha256": "b20f515d89a4bf7550cdc7994fd8b9ada0b8c6e10dba22448dbd6ce3afb65ff1"
-      },
-      "generatedFiles": [
-        {
-          "status": "modified",
-          "filename": "bridge/claude-md-coordinator.cjs",
-          "sha": "dd9babfd7e2dc721f8a712f54f12e882689381dc",
-          "previousFilename": null
-        }
-      ]
-    },
-    {
       "pullNumber": 3537,
       "targetRef": "main",
       "mergeBaseSha": "76c90920b74494df6e34d6165be963bca8a9adf6",
@@ -19913,6 +19893,26 @@
           "status": "modified",
           "filename": "dist/workflow/registry.js.map",
           "sha": "c91f8e4416ab006f945f75f8102fb6dfc9ce34ed",
+          "previousFilename": null
+        }
+      ]
+    },
+    {
+      "pullNumber": 4200,
+      "targetRef": "main",
+      "mergeBaseSha": "134f4c96e2bdc0e10a0ee6bbbd413ded0d3c57b6",
+      "headSha": "624380ced75db81df273b0f9fe3584e96994d00a",
+      "owner": "Yeachan-Heo",
+      "expiresAt": "2026-12-31T23:59:59.999Z",
+      "generatedDelta": {
+        "count": 1,
+        "sha256": "b20f515d89a4bf7550cdc7994fd8b9ada0b8c6e10dba22448dbd6ce3afb65ff1"
+      },
+      "generatedFiles": [
+        {
+          "status": "modified",
+          "filename": "bridge/claude-md-coordinator.cjs",
+          "sha": "dd9babfd7e2dc721f8a712f54f12e882689381dc",
           "previousFilename": null
         }
       ]
