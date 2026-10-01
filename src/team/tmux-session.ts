@@ -1468,11 +1468,13 @@ export function buildWorkerStartCommand(config: WorkerPaneConfig): string {
     : providerLaunchWords;
   const envVars = config.launchAttempt
     ? {
-        ...config.envVars,
         // Supervised launches carry the attempt-owned bootstrap descriptor by
         // path (never inline): secrets stay out of the process list and tmux
         // scrollback, and the delivered command stays small. The runtime CLI
         // validates and consumes the descriptor before running the provider.
+        // Team identity (team_name, worker_name, provider, instance_id) is read
+        // from the descriptor, not from environment vars, keeping the typed
+        // command under 1024 bytes even with long cwd paths.
         OMC_WORKER_LAUNCH_SPEC_FILE: config.launchAttempt.bootstrapDescriptorPath,
       }
     : config.envVars;
