@@ -1991,7 +1991,7 @@ export async function createTeamSession(
         : {}),
     });
     const detachedArgs = [
-      'new-session', '-d', '-P', '-F', '#S:0\t#{pane_id}\t#{socket_path}\t#{pid}',
+      'new-session', '-d', '-P', '-F', '#S:#{window_index}\t#{pane_id}\t#{socket_path}\t#{pid}',
       '-s', detachedSessionName,
       '-c', cwd,
       ...workerPaneShellCommand(),
@@ -3892,7 +3892,7 @@ export function normalizeDetachedSessionTarget(sessionName: string): string | nu
     ? parseDedicatedWindowTarget(sessionName)
     : null;
   const sessionTarget = detachedTarget
-    ? detachedTarget.windowIndex === '0' ? detachedTarget.sessionName : ''
+    ? detachedTarget.windowIndex && /^\d+$/.test(detachedTarget.windowIndex) ? detachedTarget.sessionName : ''
     : sessionName;
   return sessionTarget && /^[^\s:]+$/.test(sessionTarget) ? sessionTarget : null;
 }
