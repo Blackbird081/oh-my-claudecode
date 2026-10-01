@@ -246,10 +246,17 @@ function isValidProviderEnvironment(value: unknown, platform: NodeJS.Platform = 
   try { normalizeProviderEnvironment(value as Record<string, string>, platform); return true; } catch { return false; }
 }
 
+function parseEnvPassthrough(value: string | undefined): string[] {
+  if (!value || value.trim().length === 0) return [];
+  // Split by comma and trim each key
+  return value.split(',').map(k => k.trim()).filter(k => k.length > 0);
+}
+
 export function buildProviderEnvironment(
   providerEnv: NodeJS.ProcessEnv | Record<string, string> | undefined,
   sourceEnv: NodeJS.ProcessEnv = process.env,
   platform: NodeJS.Platform = process.platform,
+  envPassthrough?: readonly string[],
 ): Record<string, string> {
   const normalized = normalizeProviderEnvironment(providerEnv, platform);
   const baseline: Record<string, string> = {};
@@ -265,6 +272,17 @@ export function buildProviderEnvironment(
   const homeKey = platform === 'win32' ? 'USERPROFILE' : 'HOME';
   const home = sourceEnv[homeKey];
   if (typeof home === 'string' && home.length > 0) baseline[homeKey] = home;
+
+  // Resolve passthrough environment variables from the source environment
+  const passthroughList = envPassthrough ?? parseEnvPassthrough(sourceEnv.OMC_TEAM_WORKER_ENV_PASSTHROUGH);
+  for (const key of passthroughList) {
+    if (!isValidEnvironmentKey(key)) throw new Error('worker_launch_env_passthrough_key_invalid');
+    if (WORKER_LAUNCH_INTERNAL_ENV_KEYS.has(key)) throw new Error('worker_launch_env_passthrough_key_reserved');
+    if (platform === 'win32' && WINDOWS_RESERVED_ENV_KEYS.has(key.toUpperCase())) throw new Error('worker_launch_env_passthrough_key_reserved');
+    const value = sourceEnv[key];
+    if (typeof value === 'string') baseline[key] = value;
+  }
+
   if (platform === 'win32') {
     for (const key of Object.keys(normalized)) {
       const baselineKey = Object.keys(baseline).find(candidate => candidate.toUpperCase() === key.toUpperCase());
