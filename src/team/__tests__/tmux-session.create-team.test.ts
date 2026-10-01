@@ -233,6 +233,7 @@ import {
   detectTeamMultiplexerContext,
   splitTeamWorkerPane,
   splitTeamWorkerPaneWithEvidence,
+  strictIdentityUnavailableError,
   TeamSessionCreationError,
 } from '../tmux-session.js';
 
@@ -890,5 +891,27 @@ describe('splitTeamWorkerPane multiplexer routing (#3267)', () => {
       stderr: '',
       paneId: null,
     });
+  });
+});
+
+describe('strictIdentityUnavailableError (issue #4192)', () => {
+  it('names the missing darwin contained-fs addon and its build command', () => {
+    const missing = new Error('The contained filesystem backend is unavailable at /pkg/native/contained-fs-darwin-arm64.node. Build it with node scripts/build-contained-fs.mjs (from the installed package directory) before running graph or team commands.');
+    const error = strictIdentityUnavailableError('darwin', () => { throw missing; });
+    expect(error.message).toMatch(/^tmux_server_identity_probe_unavailable: /);
+    expect(error.message).toContain('contained-fs-darwin-arm64.node');
+    expect(error.message).toContain('scripts/build-contained-fs.mjs');
+    expect(error.cause).toBe(missing);
+  });
+
+  it('keeps the bare code when the darwin addon loads but the probe still fails', () => {
+    const error = strictIdentityUnavailableError('darwin', () => ({}));
+    expect(error.message).toBe('tmux_server_identity_probe_unavailable');
+  });
+
+  it('does not consult the addon on other platforms', () => {
+    const loadNative = vi.fn(() => { throw new Error('should not load'); });
+    expect(strictIdentityUnavailableError('win32', loadNative).message).toBe('tmux_server_identity_probe_unavailable');
+    expect(loadNative).not.toHaveBeenCalled();
   });
 });
