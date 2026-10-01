@@ -29,6 +29,7 @@ import {
   observeProcessIdentity,
   type ProcessIdentityObservation,
 } from './team-owner-epoch.js';
+import { getNativeContainedFs } from '../graph/runtime/native-contained-fs.js';
 import { paneLineLooksLikeIdlePrompt } from './pane-readiness.js';
 import {
   awaitWorkerLaunchAcknowledgement,
@@ -1915,6 +1916,26 @@ export async function splitTeamWorkerPane(
   return (await splitTeamWorkerPaneWithEvidence(splitTarget, direction, cwd)).paneId;
 }
 
+/**
+ * Darwin strict identity comes only from the contained-fs native addon (no
+ * sysctl/ps fallback), so a missing addon is the common cause of an unavailable
+ * probe there. Name it and the build command instead of a bare error code.
+ */
+export function strictIdentityUnavailableError(
+  platform: NodeJS.Platform,
+  loadNative: () => unknown = getNativeContainedFs,
+): Error {
+  if (platform === 'darwin') {
+    try {
+      loadNative();
+    } catch (cause) {
+      const detail = cause instanceof Error ? cause.message : String(cause);
+      return new Error(`tmux_server_identity_probe_unavailable: ${detail}`, { cause });
+    }
+  }
+  return new Error('tmux_server_identity_probe_unavailable');
+}
+
 export async function createTeamSession(
   teamName: string,
   workerCount: number,
@@ -1933,7 +1954,7 @@ export async function createTeamSession(
   // an empty private server held without an ownership token. CMUX has its own
   // provider identity and is intentionally excluded.
   if (!inCmux && !currentStrictProcessStartIdentity()) {
-    throw new Error('tmux_server_identity_probe_unavailable');
+    throw strictIdentityUnavailableError(process.platform);
   }
   let tmuxServerIdentity: TmuxServerIdentity | undefined;
   let freshDetachedServerIdentity: TmuxServerIdentity | undefined;

@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "194e4e25bbd7932d69ad4228395471409f47bf6a",
-    "sourceSha256": "8cf2e895902ba9b7d5ae0cec51bf1cf8a97ad3f796eb9ee29c85d7296722336b",
+    "head": "9cabaa0f2b19997e2eff65d4493929c28b45d664",
+    "sourceSha256": "6c3ec179bb94dbc82efad916d4441c06aae0e338ed99f67c46c3afa44f42459a",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "194e4e25bbd7932d69ad4228395471409f47bf6a",
-  "sourceSha256": "8cf2e895902ba9b7d5ae0cec51bf1cf8a97ad3f796eb9ee29c85d7296722336b",
+  "head": "9cabaa0f2b19997e2eff65d4493929c28b45d664",
+  "sourceSha256": "6c3ec179bb94dbc82efad916d4441c06aae0e338ed99f67c46c3afa44f42459a",
   "counts": {
     "public": {
       "skills": 47,
@@ -79281,6 +79281,11 @@
       },
       {
         "from": "src/team/tmux-session.ts",
+        "to": "src/graph/runtime/native-contained-fs.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/tmux-session.ts",
         "to": "src/team/mailbox-notification-guard.ts",
         "kind": "type-imports"
       },
@@ -83202,11 +83207,11 @@
     ],
     "stats": {
       "nodeCount": 7136,
-      "edgeCount": 8195,
-      "importEdgeCount": 6775,
+      "edgeCount": 8196,
+      "importEdgeCount": 6776,
       "registerEdgeCount": 68
     }
   },
   "inventorySha256": "22877059424c133590a79746788b8397ed7349e005a636cd24546faea841ede0",
-  "manifestSha256": "da033fb158d7c6579d24c15da2e7068d159aa8dff56bc8773e43a5a64024bdab"
+  "manifestSha256": "a65c81a987935106a10a737fe19e2d4198ebbecab4e8589b2d4f9d30a014a225"
 }
