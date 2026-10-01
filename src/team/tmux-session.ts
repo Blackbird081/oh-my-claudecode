@@ -3883,7 +3883,8 @@ function parseDedicatedWindowTarget(
 
 /**
  * Normalize only the response form published for a detached session.  A
- * detached `new-session -P` record is represented as `session:0`, while
+ * detached `new-session -P` record is represented as `session:<window_index>`
+ * (the real first window, which follows the user's tmux base-index), while
  * session inventory stores the native session name without a window suffix.
  * Split/dedicated-window callers must not use this normalization.
  */
@@ -3892,7 +3893,7 @@ export function normalizeDetachedSessionTarget(sessionName: string): string | nu
     ? parseDedicatedWindowTarget(sessionName)
     : null;
   const sessionTarget = detachedTarget
-    ? detachedTarget.windowIndex && /^\d+$/.test(detachedTarget.windowIndex) ? detachedTarget.sessionName : ''
+    ? detachedTarget.sessionName
     : sessionName;
   return sessionTarget && /^[^\s:]+$/.test(sessionTarget) ? sessionTarget : null;
 }
@@ -4057,8 +4058,8 @@ export async function killTeamSession(
     return await observeTmuxServerIdentity(identity!) === 'dead';
   }
 
-  // Detached creation publishes `session:0` because the creating response
-  // includes its window resource. Normalize that validated zero-window form
+  // Detached creation publishes `session:<window_index>` because the creating
+  // response includes its window resource. Normalize that validated window form
   // to the native session target before inventory resolution; never strip an
   // arbitrary suffix or fall back to a name lookup on another server.
   const sessionTarget = normalizeDetachedSessionTarget(sessionName);
