@@ -79,10 +79,16 @@ describe('sessionName', () => {
 });
 
 describe('detached session target normalization', () => {
-  it('normalizes only the explicit zero-window response form', () => {
+  it('normalizes numeric window indices from new-session responses', () => {
+    // Base-index 0: new-session creates window 0
     expect(normalizeDetachedSessionTarget('worker-detached-session:0')).toBe('worker-detached-session');
-    expect(normalizeDetachedSessionTarget('worker-detached-session:1')).toBeNull();
+    // Base-index 1: new-session creates window 1
+    expect(normalizeDetachedSessionTarget('worker-detached-session:1')).toBe('worker-detached-session');
+    // Base-index with custom offset: new-session might create window 5
+    expect(normalizeDetachedSessionTarget('worker-detached-session:5')).toBe('worker-detached-session');
+    // Non-numeric suffixes are rejected
     expect(normalizeDetachedSessionTarget('worker-detached-session:workers')).toBeNull();
+    // Session name alone is accepted
     expect(normalizeDetachedSessionTarget('worker-detached-session')).toBe('worker-detached-session');
   });
 });
@@ -208,6 +214,28 @@ describe('verifyTeamTargetOwnership tmux target kinds', () => {
     await expect(verifyTeamTargetOwnership(target('$session'), dependenciesFor(tmuxExec)))
       .resolves.toEqual({ kind: 'unavailable' });
     expect(tmuxExec).not.toHaveBeenCalled();
+  });
+
+  it('handles base-index 0: numeric windows with index 0', async () => {
+    const tmuxExec = vi.fn(async () => ({ stdout: '%9\n', stderr: '' }));
+
+    await expect(verifyTeamTargetOwnership(target('dispatch-session:0'), dependenciesFor(tmuxExec)))
+      .resolves.toMatchObject({ kind: 'owned', paneId: '%9', tmuxServerIdentity: serverIdentity });
+
+    expect(tmuxExec).toHaveBeenCalledWith([
+      '-S', serverIdentity.socket_path, 'list-panes', '-t', '=dispatch-session:0', '-F', '#{pane_id}',
+    ]);
+  });
+
+  it('handles base-index 1: numeric windows with index 1', async () => {
+    const tmuxExec = vi.fn(async () => ({ stdout: '%9\n', stderr: '' }));
+
+    await expect(verifyTeamTargetOwnership(target('dispatch-session:1'), dependenciesFor(tmuxExec)))
+      .resolves.toMatchObject({ kind: 'owned', paneId: '%9', tmuxServerIdentity: serverIdentity });
+
+    expect(tmuxExec).toHaveBeenCalledWith([
+      '-S', serverIdentity.socket_path, 'list-panes', '-t', '=dispatch-session:1', '-F', '#{pane_id}',
+    ]);
   });
 });
 
