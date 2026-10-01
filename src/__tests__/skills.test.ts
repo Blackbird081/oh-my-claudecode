@@ -69,10 +69,10 @@ describe('Builtin Skills', () => {
   });
 
   describe('createBuiltinSkills()', () => {
-    it('should return correct number of skills (42 canonical + 2 aliases)', () => {
+    it('should return correct number of skills (47 canonical + 2 aliases)', () => {
       const skills = createBuiltinSkills();
-      // 45 entries: 43 canonical skills + 2 aliases (cancel-ralph, psm)
-      expect(skills).toHaveLength(45);
+      // 49 entries: 47 canonical skills + 2 aliases (cancel-ralph, psm)
+      expect(skills).toHaveLength(49);
     });
 
     it('should return an array of BuiltinSkill objects', () => {
@@ -148,22 +148,26 @@ describe('Builtin Skills', () => {
         'minimal-prose-discipline',
         'launch',
         'loft',
+        'map',
         'drydock',
         'omc-doctor',
         'omc-plan',
         'omc-review',
         'omc-setup',
+        'pr',
         'project-session-manager',
         'psm',
         'ralph',
         'ralplan',
         'release',
+        'refit',
         'remember',
         'research',
         'self-improve',
         'skill',
         'skillify',
         'team',
+        'tdd',
         'trace',
         'ultragoal',
         'verify',
@@ -255,6 +259,13 @@ describe('Builtin Skills', () => {
       expect(skill?.template).toContain('multi-entity premise/key-assumption mismatches');
       expect(skill?.template).toContain('single dimensional key across distinct entities, tenants, streams, or groups');
       expect(skill?.template).toContain('verification-methodology defect');
+    });
+
+    it('should retrieve tdd as a canonical skill', () => {
+      const skill = getBuiltinSkill('tdd');
+      expect(skill).toBeDefined();
+      expect(skill?.name).toBe('tdd');
+      expect(skill?.aliasOf).toBeUndefined();
     });
 
 
@@ -679,7 +690,7 @@ describe('Builtin Skills', () => {
     it('should return canonical skill names by default', () => {
       const names = listBuiltinSkillNames();
 
-      expect(names).toHaveLength(43);
+      expect(names).toHaveLength(47);
       expect(names).toContain('ai-slop-cleaner');
       expect(names).toContain('minimal-code-discipline');
       expect(names).toContain('launch');
@@ -701,6 +712,7 @@ describe('Builtin Skills', () => {
       expect(names).toContain('omc-doctor');
       expect(names).toContain('hud');
       expect(names).toContain('omc-setup');
+      expect(names).toContain('tdd');
       expect(names).toContain('trace');
       expect(names).toContain('visual-verdict');
       expect(names).toContain('wiki');
@@ -719,10 +731,11 @@ describe('Builtin Skills', () => {
       const names = listBuiltinSkillNames({ includeAliases: true });
 
       // swarm alias removed in #1131; learner retired in 5.0.0; cancel-ralph and psm remain
-      expect(names).toHaveLength(45);
+      expect(names).toHaveLength(49);
       expect(names).toContain('ai-slop-cleaner');
       expect(names).toContain('autoresearch');
       expect(names).toContain('self-improve');
+      expect(names).toContain('tdd');
       expect(names).toContain('trace');
       expect(names).toContain('ultragoal');
       expect(names).toContain('visual-verdict');

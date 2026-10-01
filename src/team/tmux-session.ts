@@ -29,10 +29,12 @@ import {
   observeProcessIdentity,
   type ProcessIdentityObservation,
 } from './team-owner-epoch.js';
+import { getNativeContainedFs } from '../graph/runtime/native-contained-fs.js';
 import { paneLineLooksLikeIdlePrompt } from './pane-readiness.js';
 import {
   awaitWorkerLaunchAcknowledgement,
   awaitWorkerLaunchProviderStarted,
+  buildProviderEnvironment,
   cleanupWorkerLaunchTransport,
   isWorkerLaunchAttemptAccepted,
   isWorkerLaunchAttemptCurrent,
@@ -1379,7 +1381,24 @@ function workerPaneShellCommand(): string[] {
   if (process.platform === 'win32' && !isUnixLikeOnWindows()) {
     return [getDefaultShell()];
   }
-  return [];
+  if (process.platform === 'win32') return [];
+
+  // tmux can retain the full environment from when its server was started.
+  // Start pane shells from the worker-launch baseline while preserving the
+  // terminal and pane identity needed by interactive and nested team commands.
+  const shell = getDefaultShell();
+  const baseline = buildProviderEnvironment({ SHELL: shell });
+  const inheritedPaneEnvironment = ['TERM', 'TMUX', 'TMUX_PANE', 'TMUX_TMPDIR', 'LANG', 'LC_ALL', 'LC_CTYPE']
+    .map(key => `${key}="$${key}"`);
+  const command = [
+    '/usr/bin/env',
+    '-i',
+    ...Object.entries(baseline).map(([key, value]) => `${key}=${shellQuote(value)}`),
+    ...inheritedPaneEnvironment,
+    shellQuote(shell),
+    '-l',
+  ].join(' ');
+  return [command];
 }
 
 function escapeForCmdSet(value: string): string {
@@ -1449,11 +1468,13 @@ export function buildWorkerStartCommand(config: WorkerPaneConfig): string {
     : providerLaunchWords;
   const envVars = config.launchAttempt
     ? {
-        ...config.envVars,
         // Supervised launches carry the attempt-owned bootstrap descriptor by
         // path (never inline): secrets stay out of the process list and tmux
         // scrollback, and the delivered command stays small. The runtime CLI
         // validates and consumes the descriptor before running the provider.
+        // Team identity (team_name, worker_name, provider, instance_id) is read
+        // from the descriptor, not from environment vars, keeping the typed
+        // command under 1024 bytes even with long cwd paths.
         OMC_WORKER_LAUNCH_SPEC_FILE: config.launchAttempt.bootstrapDescriptorPath,
       }
     : config.envVars;
@@ -1895,6 +1916,26 @@ export async function splitTeamWorkerPane(
   return (await splitTeamWorkerPaneWithEvidence(splitTarget, direction, cwd)).paneId;
 }
 
+/**
+ * Darwin strict identity comes only from the contained-fs native addon (no
+ * sysctl/ps fallback), so a missing addon is the common cause of an unavailable
+ * probe there. Name it and the build command instead of a bare error code.
+ */
+export function strictIdentityUnavailableError(
+  platform: NodeJS.Platform,
+  loadNative: () => unknown = getNativeContainedFs,
+): Error {
+  if (platform === 'darwin') {
+    try {
+      loadNative();
+    } catch (cause) {
+      const detail = cause instanceof Error ? cause.message : String(cause);
+      return new Error(`tmux_server_identity_probe_unavailable: ${detail}`, { cause });
+    }
+  }
+  return new Error('tmux_server_identity_probe_unavailable');
+}
+
 export async function createTeamSession(
   teamName: string,
   workerCount: number,
@@ -1913,7 +1954,7 @@ export async function createTeamSession(
   // an empty private server held without an ownership token. CMUX has its own
   // provider identity and is intentionally excluded.
   if (!inCmux && !currentStrictProcessStartIdentity()) {
-    throw new Error('tmux_server_identity_probe_unavailable');
+    throw strictIdentityUnavailableError(process.platform);
   }
   let tmuxServerIdentity: TmuxServerIdentity | undefined;
   let freshDetachedServerIdentity: TmuxServerIdentity | undefined;
@@ -1973,7 +2014,7 @@ export async function createTeamSession(
         : {}),
     });
     const detachedArgs = [
-      'new-session', '-d', '-P', '-F', '#S:0\t#{pane_id}\t#{socket_path}\t#{pid}',
+      'new-session', '-d', '-P', '-F', '#S:#{window_index}\t#{pane_id}\t#{socket_path}\t#{pid}',
       '-s', detachedSessionName,
       '-c', cwd,
       ...workerPaneShellCommand(),
@@ -2223,6 +2264,7 @@ export async function createTeamSession(
       '-t', `=${targetSession}`,
       '-n', windowName,
       '-c', cwd,
+      ...workerPaneShellCommand(),
     ];
     let newWindowResult: Awaited<ReturnType<typeof runGuardedNativeTmuxCommand>>;
     try {
@@ -2855,17 +2897,21 @@ async function capturePaneAsync(
 
 export async function captureTeamPane(
   paneId: string,
-  options: { tmuxServerIdentity?: TmuxServerIdentity } = {},
+  options: { joinWrappedLines?: boolean; tmuxServerIdentity?: TmuxServerIdentity } = {},
 ): Promise<string> {
   return capturePaneAsync(paneId, options);
 }
 
 /** Capture an owned pane only while the original tmux incarnation matches. */
-export async function captureOwnedTeamPane(ownership: WorkerPaneOwnership): Promise<string> {
-  if (ownership.provider === 'cmux') return captureTeamPane(ownership.paneId);
+export async function captureOwnedTeamPane(
+  ownership: WorkerPaneOwnership,
+  options: { joinWrappedLines?: boolean } = {},
+): Promise<string> {
+  if (ownership.provider === 'cmux') return captureTeamPane(ownership.paneId, options);
   if (!isValidTmuxServerIdentity(ownership.tmuxServerIdentity)
     || !TMUX_MAILBOX_PANE_ID.test(ownership.paneId)) return '';
   return captureTeamPane(ownership.paneId, {
+    ...options,
     tmuxServerIdentity: ownership.tmuxServerIdentity,
   });
 }
@@ -2960,7 +3006,7 @@ export async function killOwnedWorkerPane(ownership: WorkerPaneOwnership): Promi
   }
 }
 
-type PaneTrustPromptKind = 'directory' | 'codex_hooks' | 'cursor_workspace_trust';
+type PaneTrustPromptKind = 'directory' | 'claude_directory' | 'codex_hooks' | 'cursor_workspace_trust';
 
 function detectPaneTrustPromptKind(captured: string, provider?: CliAgentType): PaneTrustPromptKind | null {
   const lines = captured.split('\n').map(l => l.replace(/\r/g, '').trim()).filter(l => l.length > 0);
@@ -2971,6 +3017,16 @@ function detectPaneTrustPromptKind(captured: string, provider?: CliAgentType): P
   if ((provider === undefined || provider === 'cursor')
     && hasCursorTrustBanner && (hasCursorTrustHint || tail.some(l => /Do you trust the contents of this directory\?/i.test(l)))) {
     return 'cursor_workspace_trust';
+  }
+
+  const hasClaudeDirectoryQuestion = tail.some(l =>
+    /(?:Do you trust the files in this folder|Quick safety check:\s*Is this a project you created or one you trust)\?/i.test(l),
+  );
+  const hasClaudeDirectoryNoChoice = tail.some(l => /\bNo,\s*exit\b/i.test(l));
+  const hasClaudeDirectoryYesChoice = tail.some(l => /\bYes,\s*(?:proceed|I trust this folder)\b/i.test(l));
+  if (provider === 'claude' && hasClaudeDirectoryQuestion
+    && hasClaudeDirectoryNoChoice && hasClaudeDirectoryYesChoice) {
+    return 'claude_directory';
   }
 
   const hasDirectoryQuestion = tail.some(l => /Do you trust the contents of this directory\?/i.test(l));
@@ -3040,7 +3096,7 @@ export function paneHasActiveTask(captured: string, provider?: CliAgentType): bo
   if (tail.some(l => /\b\d+\s+background terminal running\b/i.test(l))) return true;
   if (tail.some(l => /esc to interrupt/i.test(l))) return true;
   if (tail.some(l => /\bbackground terminal running\b/i.test(l))) return true;
-  if (tail.some(l => /^[·✻]\s+[A-Za-z][A-Za-z0-9''-]*(?:\s+[A-Za-z][A-Za-z0-9''-]*){0,3}(?:…|\.{3})$/u.test(l))) return true;
+  if (tail.some(l => /^[·✻✢✳✶✽✺✹✸✷*]\s+[A-Za-z][A-Za-z0-9''-]*(?:\s+[A-Za-z][A-Za-z0-9''-]*){0,3}(?:…|\.{3})(?:\s*\(.*\))?$/u.test(l))) return true;
   return false;
 }
 
@@ -3208,14 +3264,25 @@ export async function waitForStartupPaneReady(
       }
       const providerSupportsSelector = selector === 'codex_hooks'
         ? context.provider === 'codex'
-        : context.provider === 'codex' || context.provider === 'claude';
+        : selector === 'claude_directory'
+          ? context.provider === 'claude'
+          : context.provider === 'codex' || context.provider === 'claude';
       if (!providerSupportsSelector) return { ok: false, reason: 'selector_unsupported' };
       if (handledSelectors.has(selector)) return { ok: false, reason: 'selector_persistent' };
-      await sendLiteralPaneText(
-        context.ownership.paneId,
-        selector === 'directory' ? '1' : '3',
-        context.ownership.tmuxServerIdentity,
-      );
+      if (selector === 'claude_directory') {
+        // This Claude Code dialog focuses "No, exit" by default; move to the affirmative choice.
+        await sendTeamPaneKey(
+          context.ownership.paneId,
+          'Down',
+          context.ownership.tmuxServerIdentity,
+        );
+      } else {
+        await sendLiteralPaneText(
+          context.ownership.paneId,
+          selector === 'directory' ? '1' : '3',
+          context.ownership.tmuxServerIdentity,
+        );
+      }
       await sendTeamPaneKey(
         context.ownership.paneId,
         'Enter',
@@ -3839,7 +3906,8 @@ function parseDedicatedWindowTarget(
 
 /**
  * Normalize only the response form published for a detached session.  A
- * detached `new-session -P` record is represented as `session:0`, while
+ * detached `new-session -P` record is represented as `session:<window_index>`
+ * (the real first window, which follows the user's tmux base-index), while
  * session inventory stores the native session name without a window suffix.
  * Split/dedicated-window callers must not use this normalization.
  */
@@ -3848,7 +3916,7 @@ export function normalizeDetachedSessionTarget(sessionName: string): string | nu
     ? parseDedicatedWindowTarget(sessionName)
     : null;
   const sessionTarget = detachedTarget
-    ? detachedTarget.windowIndex === '0' ? detachedTarget.sessionName : ''
+    ? detachedTarget.sessionName
     : sessionName;
   return sessionTarget && /^[^\s:]+$/.test(sessionTarget) ? sessionTarget : null;
 }
@@ -4013,8 +4081,8 @@ export async function killTeamSession(
     return await observeTmuxServerIdentity(identity!) === 'dead';
   }
 
-  // Detached creation publishes `session:0` because the creating response
-  // includes its window resource. Normalize that validated zero-window form
+  // Detached creation publishes `session:<window_index>` because the creating
+  // response includes its window resource. Normalize that validated window form
   // to the native session target before inventory resolution; never strip an
   // arbitrary suffix or fall back to a name lookup on another server.
   const sessionTarget = normalizeDetachedSessionTarget(sessionName);
