@@ -19921,12 +19921,12 @@
       "pullNumber": 4203,
       "targetRef": "main",
       "mergeBaseSha": "e74b22cd34e0a8b9dd5ded87d1bf0db6ce1a38dd",
-      "headSha": "ed3869a356d9b4653533269ca8cb7e56b7735169",
+      "headSha": "1b85e2245b77b578fa999a916c0c6a8d360e0bcb",
       "owner": "Yeachan-Heo",
       "expiresAt": "2026-12-30T13:09:58.331Z",
       "generatedDelta": {
-        "count": 209,
-        "sha256": "b61cae7b1668b47e96a4a10a6993d77647da7ca9a593e7dcea0ca0bb0d4df229"
+        "count": 239,
+        "sha256": "c7d08e71f48c18f251c2fce72b56184623b2b88722e90b7984d7e1bb3d0771ff"
       },
       "generatedFiles": [
         {
@@ -20224,6 +20224,42 @@
           "previousFilename": null
         },
         {
+          "status": "added",
+          "filename": "dist/cli/commands/factory.d.ts",
+          "sha": "7effce34dbc0f2317c3a3e2067f92257c67d63cf",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/cli/commands/factory.js",
+          "sha": "6cbc26a1299bbb3ae72ff00129a1bca2fd483d56",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/cli/commands/intake.d.ts",
+          "sha": "6aee7af46cec36c967e2e2913ca7afe585c7fd2e",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/cli/commands/intake.js",
+          "sha": "e8ef8ffd7bd60bc3570d524f89a48fae26a81e60",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/cli/commands/ralph.d.ts",
+          "sha": "20cc57b79d7e9632d7df3b5526b8cd1331e1d287",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/cli/commands/ralph.js",
+          "sha": "096738827d0c847beec0a30751d0612be7353b59",
+          "previousFilename": null
+        },
+        {
           "status": "modified",
           "filename": "dist/cli/commands/team.d.ts.map",
           "sha": "aae50fedd5064a60f4ed7a115df09c5d0d3d286d",
@@ -20311,6 +20347,48 @@
           "status": "modified",
           "filename": "dist/cli/tmux-utils.js.map",
           "sha": "3dad80fd83aa715b2cfef213886831f34232f310",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/factory/listener.d.ts",
+          "sha": "2283cf7929108c97e26ed20afcc716076c2f555f",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/factory/listener.js",
+          "sha": "c40558bd2f72d84d4e2b933796c8e45c7d72f369",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/factory/status.d.ts",
+          "sha": "ee4673e10f85087d876a5d3a9dcadfb6f032884f",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/factory/status.js",
+          "sha": "77e445c81d660c7c511006eac9c8de0bd55c026f",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/factory/watchdog.d.ts",
+          "sha": "76a739d01216994cae12b8f089f0d95b4f5a2f15",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/factory/watchdog.js",
+          "sha": "d0e338c25cef15287fd8768e2c2bac83425a07bc",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/factory/watchdog.test.d.ts",
+          "sha": "6dde934299f782613cc96ec0e4e56edfd053f508",
           "previousFilename": null
         },
         {
@@ -20422,6 +20500,18 @@
           "previousFilename": null
         },
         {
+          "status": "added",
+          "filename": "dist/hooks/ralph/feedback-baseline.d.ts",
+          "sha": "7e4dfe98289f82b2c1714f39d7a10dcf085f964c",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/hooks/ralph/feedback-baseline.js",
+          "sha": "31a53ad1459a40d5d78c95a54ccba34a69dd9e39",
+          "previousFilename": null
+        },
+        {
           "status": "modified",
           "filename": "dist/hooks/ralph/index.d.ts",
           "sha": "f0ec0f38b56b636b8901f20f3338a9f4f23d3991",
@@ -20524,6 +20614,12 @@
           "previousFilename": null
         },
         {
+          "status": "added",
+          "filename": "dist/hooks/rules-injector/matcher.test.d.ts",
+          "sha": "1c345b8e4d12e23dae0602b7c8131a4e58df2a16",
+          "previousFilename": null
+        },
+        {
           "status": "modified",
           "filename": "dist/hooks/session-end/__tests__/action-runner.test.js",
           "sha": "44de9fb4369403ebb6cf9b7a327c0a4575e5aad9",
@@ -20578,6 +20674,30 @@
           "previousFilename": null
         },
         {
+          "status": "added",
+          "filename": "dist/hooks/session-end/chain-enqueuer.d.ts",
+          "sha": "ba59c91e7bf8ea683ba24b8ee15d7416b9cb7eb6",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/hooks/session-end/chain-enqueuer.js",
+          "sha": "94be5534a9e03bf83ca664edcd9cc69f7b20844e",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/hooks/session-end/check-evidence.d.ts",
+          "sha": "ce4834b853d187cde344a3c1ed7c909956f56ba4",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/hooks/session-end/check-evidence.js",
+          "sha": "18bbb2327aaf172d226c60694ebe9ea6bad96523",
+          "previousFilename": null
+        },
+        {
           "status": "modified",
           "filename": "dist/hooks/session-end/cleanup-manifest.d.ts",
           "sha": "02e236315f30808cc80d69594f12d3e19846c738",
@@ -20620,6 +20740,18 @@
           "previousFilename": null
         },
         {
+          "status": "added",
+          "filename": "dist/hooks/session-end/guardrails.d.ts",
+          "sha": "1d80203e77734e8dde1908134afaff53b721d4bc",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/hooks/session-end/guardrails.js",
+          "sha": "82731e383c931e9f0c5c63b908f421188090fb3c",
+          "previousFilename": null
+        },
+        {
           "status": "modified",
           "filename": "dist/hooks/session-end/index.d.ts.map",
           "sha": "583fba23fc295c733025611a5e6ec0a65ab4854f",
@@ -20635,6 +20767,30 @@
           "status": "modified",
           "filename": "dist/hooks/session-end/index.js.map",
           "sha": "534fb8f09f12703ab91630f9f7178c61512bef56",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/hooks/session-end/routing.d.ts",
+          "sha": "a907dfcf1a49fb002dc9fffd1f4668548a23755c",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/hooks/session-end/routing.js",
+          "sha": "82cc1fda2ea472e1ba8ef39de311c6aeaeec37fe",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/hooks/session-end/spawn-next.d.ts",
+          "sha": "81fa7ed480321d96e8f8555e2bfc7913dd1562a4",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/hooks/session-end/spawn-next.js",
+          "sha": "a165a48e71e90fafef6d4dab42762a0dc805bb7b",
           "previousFilename": null
         },
         {
@@ -20800,6 +20956,18 @@
           "previousFilename": null
         },
         {
+          "status": "added",
+          "filename": "dist/lib/host-load-gate.d.ts",
+          "sha": "52b56ad15e9a3a99f7ee4fdff54bd96d1730c1ee",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/lib/host-load-gate.js",
+          "sha": "1d86d85d69a85ca3f451bb6b2b64c13edd3eb4d8",
+          "previousFilename": null
+        },
+        {
           "status": "modified",
           "filename": "dist/lib/mode-state-io.d.ts.map",
           "sha": "166594307f8e972c36cf5f7f83a92f2ac6451796",
@@ -20815,6 +20983,18 @@
           "status": "modified",
           "filename": "dist/lib/mode-state-io.js.map",
           "sha": "67ace3e4f82b0d442b26896b90fe4289a327c121",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/lib/runs-ledger.d.ts",
+          "sha": "52e1e4b0259608374f6a36162392084a5d343c62",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/lib/runs-ledger.js",
+          "sha": "da33cfd58d8eff98f0542e8debaf343d821378fe",
           "previousFilename": null
         },
         {
